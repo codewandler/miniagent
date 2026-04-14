@@ -63,7 +63,9 @@ func truncateDisplay(s string, max int) string {
 	return s[:max] + "..."
 }
 
-// formatUsageParts builds "input: N  cache_r: N  output: N  cost: $X".
+// formatUsageParts builds "input: N  cache_r: N (HIT%)  cache_w: N  output: N  cost: $X".
+// The hit-rate annotation on cache_r shows what fraction of cache-touched tokens
+// were reads (hits) vs writes (cold misses): cache_read / (cache_read + cache_write).
 // Shared by step, turn, and session usage display.
 func formatUsageParts(rec usage.Record) string {
 	kindLabels := []struct {
@@ -82,7 +84,16 @@ func formatUsageParts(rec usage.Record) string {
 		if count == 0 {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%s: %s", kl.label, formatTokenCount(count)))
+		s := fmt.Sprintf("%s: %s", kl.label, formatTokenCount(count))
+		// Annotate cache_r with the hit rate: reads / (reads + writes).
+		// 100 % means the cache was fully warm; 0 % would mean no cache_r at all
+		// (which cannot happen here since count > 0 for KindCacheRead).
+		if kl.kind == usage.KindCacheRead {
+			cacheWrite := rec.Tokens.Count(usage.KindCacheWrite)
+			hitRate := float64(count) * 100.0 / float64(count+cacheWrite)
+			s += fmt.Sprintf(" (%.0f%%)", hitRate)
+		}
+		parts = append(parts, s)
 	}
 	if cs := formatCost(rec.Cost.Total); cs != "" {
 		parts = append(parts, fmt.Sprintf("cost: %s", cs))

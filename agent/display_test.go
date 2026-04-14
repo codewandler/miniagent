@@ -70,7 +70,8 @@ func TestFormatUsageParts(t *testing.T) {
 		}
 		parts := formatUsageParts(rec)
 		assert.Contains(t, parts, "input: 1\u2009204")
-		assert.Contains(t, parts, "cache_r: 8\u2009432")
+		// cache_r is annotated with hit rate; no cache_w → 100 % hit
+		assert.Contains(t, parts, "cache_r: 8\u2009432 (100%)")
 		assert.Contains(t, parts, "output: 87")
 		assert.Contains(t, parts, "cost: $0.0023")
 	})
@@ -87,6 +88,39 @@ func TestFormatUsageParts(t *testing.T) {
 		assert.Contains(t, parts, "output: 50")
 		assert.NotContains(t, parts, "cache")
 		assert.NotContains(t, parts, "cost")
+	})
+
+	t.Run("cache hit rate 75 percent", func(t *testing.T) {
+		rec := usage.Record{
+			Tokens: usage.TokenItems{
+				{Kind: usage.KindInput, Count: 200},
+				{Kind: usage.KindCacheRead, Count: 300},  // 300/(300+100) = 75 %
+				{Kind: usage.KindCacheWrite, Count: 100},
+				{Kind: usage.KindOutput, Count: 50},
+			},
+		}
+		parts := formatUsageParts(rec)
+		assert.Contains(t, parts, "cache_r: 300 (75%)")
+		assert.Contains(t, parts, "cache_w: 100")
+		// hit rate annotation must NOT appear on cache_w
+		assert.NotContains(t, parts, "cache_w: 100 (")
+	})
+
+	t.Run("cache write only cold start 0 pct hit", func(t *testing.T) {
+		// No cache reads at all: cache_r line is omitted entirely (zero guard),
+		// so the hit-rate annotation is also absent.
+		rec := usage.Record{
+			Tokens: usage.TokenItems{
+				{Kind: usage.KindInput, Count: 500},
+				{Kind: usage.KindCacheWrite, Count: 400},
+				{Kind: usage.KindOutput, Count: 60},
+			},
+		}
+		parts := formatUsageParts(rec)
+		assert.Contains(t, parts, "cache_w: 400")
+		// No cache reads → no hit-rate annotation at all
+		assert.NotContains(t, parts, "cache_r")
+		assert.NotContains(t, parts, "%)")
 	})
 
 	t.Run("empty record", func(t *testing.T) {

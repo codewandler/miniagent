@@ -146,10 +146,22 @@ func (a *Agent) runStep(
 
 	// Pass *RequestBuilder directly — it implements Buildable.
 	// Provider calls BuildRequest() internally (validates + returns Request).
+	// For multi-step turns, add a cache hint to the last accumulated message so
+	// the growing conversation history is progressively cached. Anthropic and
+	// Bedrock place a cache breakpoint at this position on the wire; on the first
+	// step (only system + user present) the system prompt hint already handles it.
+	messages := a.messages
+	if n := len(messages); n > 1 && messages[n-1].CacheHint == nil {
+		cp := make(msg.Messages, n)
+		copy(cp, messages)
+		cp[n-1].CacheHint = msg.NewCacheHint(msg.CacheTTL5m)
+		messages = cp
+	}
+
 	rb := llm.NewRequestBuilder().
 		Model(a.model).
 		MaxTokens(a.maxTokens).
-		Append(a.messages...).
+		Append(messages...).
 		Tools(a.toolDefs...)
 
 	stream, err := a.provider.CreateStream(ctx, rb)
