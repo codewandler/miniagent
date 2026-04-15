@@ -8,7 +8,7 @@ Gather all three of these values in ONE command and write the results to
 /tmp/bench_result.txt, with "bench1-ok" on the last line:
   1. The current working directory (pwd)
   2. The current user (whoami)
-  3. The number of .go files in /repo/cmd/miniagent/agent/ (find or ls)
+  3. The number of .go files in /repo/agent/ (find or ls)
 
 Example final file content:
   /some/path

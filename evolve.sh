@@ -22,7 +22,7 @@
 set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$WORKSPACE/../.." && pwd)"
+REPO_ROOT="$(cd "$WORKSPACE" && pwd)"
 
 EVOLVE_DIR="$WORKSPACE/evolve"
 BENCHMARKS_DIR="$WORKSPACE/benchmarks"
@@ -266,9 +266,9 @@ $(for f in $(find "$BENCHMARKS_DIR" -name "*.md" | sort); do
 ## Steps you MUST complete (do not skip any)
 
 1. Read your source files (use cat — do NOT skip this step):
-     /repo/cmd/miniagent/agent/system.go   ← system prompt  (HIGHEST IMPACT)
-     /repo/cmd/miniagent/agent/tools.go    ← bash tool description + limits
-     /repo/cmd/miniagent/main.go           ← CLI flag defaults
+     /repo/agent/system.go   ← system prompt  (HIGHEST IMPACT)
+     /repo/agent/tools.go    ← bash tool description + limits
+     /repo/main.go           ← CLI flag defaults
 
 2. Identify ONE specific change that would improve the scores above.
    Think about cause and effect:
@@ -284,14 +284,14 @@ $(for f in $(find "$BENCHMARKS_DIR" -name "*.md" | sort); do
 3. Implement the change by editing the file(s) directly with bash.
 
 4. Verify the code compiles:
-     cd /repo && go build ./cmd/miniagent/
+     cd /repo && go build ./
    If it fails, FIX the error.
    If you truly cannot fix it, revert with:
-     git -C /repo restore cmd/miniagent/agent/ cmd/miniagent/main.go
+     git -C /repo restore agent/ main.go
    and write NO_CHANGE as the first line of the reasoning file below.
 
 5. Show the diff:
-     git -C /repo diff cmd/miniagent/agent/ cmd/miniagent/main.go
+     git -C /repo diff agent/ main.go
 
 6. Write your reasoning to: ${reasoning_file}
    Include what you changed, why, which benchmarks should improve, and the diff.
@@ -299,7 +299,7 @@ $(for f in $(find "$BENCHMARKS_DIR" -name "*.md" | sort); do
 
 6. Update documentation (do this AFTER verifying go build succeeds):
 
-   a) CHANGELOG.md at /repo/cmd/miniagent/CHANGELOG.md
+   a) CHANGELOG.md at /repo/CHANGELOG.md
       Add a new entry at the very top (after the header block, before any existing "---"):
 
         ## revision ${next_revision} — $(date +%Y-%m-%d)
@@ -309,11 +309,11 @@ $(for f in $(find "$BENCHMARKS_DIR" -name "*.md" | sort); do
 
         ---
 
-   b) README.md at /repo/cmd/miniagent/README.md
+   b) README.md at /repo/README.md
       Update the "What it can do" bullet list ONLY if a user-visible
       capability was genuinely added or removed. Skip otherwise.
 
-   c) AGENTS.md at /repo/cmd/miniagent/AGENTS.md
+   c) AGENTS.md at /repo/AGENTS.md
       Update ONLY if the architecture, scoring rules, or agent constraints
       actually changed. Skip otherwise.
 
@@ -380,14 +380,14 @@ phase_build_candidate() {
     export GOTOOLCHAIN=local
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
       -o "$CANDIDATE_BIN" \
-      ./cmd/miniagent/
+      ./
   )
   local exit_code=$?
   set -e
 
   if [[ $exit_code -ne 0 ]]; then
     fail "Candidate build failed — reverting source changes"
-    git -C "$REPO_ROOT" restore cmd/miniagent/agent/ cmd/miniagent/main.go 2>/dev/null || true
+    git -C "$REPO_ROOT" restore agent/ main.go 2>/dev/null || true
     return 1
   fi
 
@@ -431,14 +431,14 @@ phase_commit_and_promote() {
 
   log "Committing improvements..."
   git -C "$REPO_ROOT" add \
-    cmd/miniagent/agent/ \
-    cmd/miniagent/main.go \
-    cmd/miniagent/CHANGELOG.md \
-    cmd/miniagent/README.md \
-    cmd/miniagent/AGENTS.md
+    agent/ \
+    main.go \
+    CHANGELOG.md \
+    README.md \
+    AGENTS.md
   git -C "$REPO_ROOT" commit \
     -m "evolve(cycle${cycle}): ${summary}" \
-    -m "See cmd/miniagent/evolve/reasoning/cycle_${cycle}.md"
+    -m "See evolve/reasoning/cycle_${cycle}.md"
 
   cp "$CANDIDATE_BIN" "$STABLE_BIN"
   chmod +x "$STABLE_BIN"
@@ -456,7 +456,7 @@ phase_commit_and_promote() {
 phase_revert() {
   log "Reverting source changes..."
   git -C "$REPO_ROOT" restore \
-    cmd/miniagent/agent/ cmd/miniagent/main.go 2>/dev/null || true
+    agent/ main.go 2>/dev/null || true
   rm -f "$CANDIDATE_BIN"
   warn "Changes reverted — stable binary unchanged"
 }

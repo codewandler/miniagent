@@ -1,7 +1,7 @@
 # Benchmark: Source Code Reading
 EXPECTED: 20480
 
-Read the file /repo/cmd/miniagent/agent/tools.go.
+Read the file /repo/agent/tools.go.
 
 Find the constant named maxOutputBytes. It is defined as an arithmetic
 expression. Evaluate it to a plain integer.

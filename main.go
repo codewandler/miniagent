@@ -13,8 +13,8 @@ import (
 
 	"github.com/codewandler/llm"
 	"github.com/codewandler/llm/cmd/llmcli/store"
-	"github.com/codewandler/llm/cmd/miniagent/agent"
 	"github.com/codewandler/llm/provider/auto"
+	"github.com/codewandler/miniagent/agent"
 )
 
 func main() {

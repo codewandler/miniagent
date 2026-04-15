@@ -1,7 +1,7 @@
 # Benchmark: Multi-target Analysis
 EXPECTED: FILES=5
 
-Count two things about the miniagent codebase in /repo/cmd/miniagent/agent/:
+Count two things about the miniagent codebase in /repo/agent/:
   1. How many non-test .go files exist (files NOT ending in _test.go)?
   2. How many exported functions (lines starting with "func [A-Z]") are in
      agent.go specifically?
