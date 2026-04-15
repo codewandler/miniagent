@@ -1,0 +1,16 @@
+# Docker build artifact (produced by `task build` / `task evolve`)
+.miniagent-bin
+
+# Go build cache (populated inside Docker on first evolve run)
+.go-cache/
+
+# Evolution runtime artefacts — binaries and raw scores are not source
+evolve/bin/
+evolve/scores/
+evolve/cycles.jsonl
+
+# evolve/revision     — committed (tracks accepted improvement count)
+# evolve/reasoning/   — committed (agent's notes on each cycle)
+# CHANGELOG.md        — committed (human-readable history)
+
+.task

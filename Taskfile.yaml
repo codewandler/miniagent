@@ -1,0 +1,98 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Taskfile for miniagent
+#
+#   task install          → install miniagent binary to $GOPATH/bin
+#   task build            → compile binary + build Docker image
+#   task evolve           → run self-improvement loop inside hardened Docker
+#   task evolve -- --cycles 3   → run exactly 3 improvement cycles
+#   task clean            → remove build artifacts + Docker image
+# ─────────────────────────────────────────────────────────────────────────────
+version: '3'
+
+vars:
+  IMAGE: miniagent-evolve
+  BIN_ARTIFACT: .miniagent-bin
+  REPO_ROOT:
+    sh: cd ../.. && pwd
+  GOROOT:
+    sh: go env GOROOT
+
+tasks:
+
+  # ── install ───────────────────────────────────────────────────────────────
+  install:
+    desc: "Build & install miniagent into $GOPATH/bin (usually ~/go/bin)"
+    dir: ../..
+    cmds:
+      - go install ./cmd/miniagent/
+    sources:
+      - cmd/miniagent/**/*.go
+      - "**/*.go"
+      - go.mod
+      - go.sum
+
+  # ── _build-binary (internal) ──────────────────────────────────────────────
+  _build-binary:
+    desc: "Compile a static Linux/amd64 binary for Docker packaging"
+    internal: true
+    dir: ../..
+    cmds:
+      - |
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+          go build -trimpath -ldflags="-s -w" \
+          -o cmd/miniagent/{{.BIN_ARTIFACT}} \
+          ./cmd/miniagent/
+    sources:
+      - cmd/miniagent/**/*.go
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - cmd/miniagent/{{.BIN_ARTIFACT}}
+
+  # ── build ─────────────────────────────────────────────────────────────────
+  build:
+    desc: "Compile binary + build hardened Docker image"
+    deps: [_build-binary]
+    cmds:
+      - docker build -t {{.IMAGE}} -f Dockerfile .
+
+  # ── evolve ────────────────────────────────────────────────────────────────
+  evolve:
+    desc: "Run the self-improvement evolution loop inside a hardened Docker sandbox"
+    deps: [build]
+    cmds:
+      - |
+        # Create the persistent Go build cache with the current user's ownership
+        # so the container (which runs as the same UID) can write to it.
+        mkdir -p .go-cache/build .go-cache/mod
+
+        USER_UID=$(id -u)
+        USER_GID=$(id -g)
+
+        docker run --rm -it \
+          --security-opt no-new-privileges \
+          --cap-drop ALL \
+          --read-only \
+          --tmpfs /tmp:rw,nosuid,size=512m \
+          --tmpfs /root:rw,nosuid,noexec,size=32m \
+          -u "${USER_UID}:${USER_GID}" \
+          -v "{{.GOROOT}}:/usr/local/go:ro" \
+          -v "{{.REPO_ROOT}}:/repo" \
+          -e HOME=/tmp \
+          -e GOCACHE=/repo/cmd/miniagent/.go-cache/build \
+          -e GOMODCACHE=/repo/cmd/miniagent/.go-cache/mod \
+          -e GOTOOLCHAIN=local \
+          -e ANTHROPIC_API_KEY \
+          -e OPENAI_API_KEY \
+          -e OPENROUTER_API_KEY \
+          {{.IMAGE}} \
+          /repo/cmd/miniagent/evolve.sh {{.CLI_ARGS}}
+
+  # ── clean ─────────────────────────────────────────────────────────────────
+  clean:
+    desc: "Remove build artifacts, go cache, and Docker image"
+    cmds:
+      - rm -f {{.BIN_ARTIFACT}}
+      - rm -rf .go-cache evolve/bin evolve/scores evolve/reasoning evolve/cycles.jsonl
+      - docker rmi {{.IMAGE}} 2>/dev/null || true
