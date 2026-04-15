@@ -94,7 +94,7 @@ func TestFormatUsageParts(t *testing.T) {
 		rec := usage.Record{
 			Tokens: usage.TokenItems{
 				{Kind: usage.KindInput, Count: 200},
-				{Kind: usage.KindCacheRead, Count: 300},  // 300/(300+100) = 75 %
+				{Kind: usage.KindCacheRead, Count: 300}, // 300/(300+100) = 75 %
 				{Kind: usage.KindCacheWrite, Count: 100},
 				{Kind: usage.KindOutput, Count: 50},
 			},
