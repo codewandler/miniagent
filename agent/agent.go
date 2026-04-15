@@ -20,7 +20,8 @@ import (
 type Agent struct {
 	provider    llm.Provider
 	messages    msg.Messages
-	tracker     *usage.Tracker
+	tracker         *usage.Tracker
+	initialMessages msg.Messages
 	toolDefs    []tool.Definition
 	toolHandler tool.NamedHandler
 	model       string
@@ -86,9 +87,11 @@ func New(
 
 	// System prompt with cache hint for REPL efficiency
 	prompt := BuildSystemPrompt(workspace, systemOverride)
-	a.messages = msg.Messages{
+	initMsg := msg.Messages{
 		msg.System(prompt).Cache(msg.CacheTTL1h).Build(),
 	}
+	a.initialMessages = initMsg
+	a.messages = initMsg
 
 	a.toolDefs = []tool.Definition{BashDefinition()}
 	a.toolHandler = NewBashHandler(workspace, cmdTimeout)
@@ -101,6 +104,13 @@ func (a *Agent) Tracker() *usage.Tracker { return a.tracker }
 
 // Out returns the output writer (for REPL to write to the same destination).
 func (a *Agent) Out() io.Writer { return a.out }
+
+// Reset clears conversation history back to the initial system prompt and
+// starts a fresh usage tracker. Called by the REPL /new command.
+func (a *Agent) Reset() {
+	a.messages = a.initialMessages
+	a.tracker = usage.NewTracker(usage.WithCostCalculator(usage.Default()))
+}
 
 // ErrMaxStepsReached is returned by RunTurn when the step loop is exhausted
 // before the model produced a tool-free response. Partial output may have been

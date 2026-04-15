@@ -62,6 +62,12 @@ func RunREPL(ctx context.Context, a *Agent, input io.Reader) error {
 		if line == "exit" || line == "quit" {
 			break
 		}
+		if line == "/new" {
+			a.Reset()
+			turnID = 0
+			fmt.Fprintln(out, "Session reset.")
+			continue
+		}
 
 		turnID++
 		turnCtx, cancel := context.WithCancel(ctx)
