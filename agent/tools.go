@@ -34,7 +34,7 @@ type BashResult struct {
 func BashDefinition() tool.Definition {
 	return tool.NewSpec[BashParams](
 		"bash",
-		"Execute a bash command in the workspace directory. Returns combined stdout and stderr.",
+		"Execute a bash command in the workspace directory. Returns combined stdout and stderr. For efficiency, combine multiple steps into a single command using shell operators (&&, ||, ;, pipes, subshells).",
 	).Definition()
 }
 
