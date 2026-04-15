@@ -26,6 +26,9 @@ type Agent struct {
 	model       string
 	maxSteps    int
 	maxTokens   int
+	thinking    llm.ThinkingMode
+	effort      llm.Effort
+	temperature float64
 	out         io.Writer
 }
 
@@ -41,6 +44,15 @@ func WithMaxSteps(n int) Option { return func(a *Agent) { a.maxSteps = n } }
 // WithMaxTokens sets the maximum output tokens per LLM call (default: 16000).
 func WithMaxTokens(n int) Option { return func(a *Agent) { a.maxTokens = n } }
 
+// WithThinking sets the thinking mode (default: ThinkingOn).
+func WithThinking(m llm.ThinkingMode) Option { return func(a *Agent) { a.thinking = m } }
+
+// WithEffort sets the effort level (default: EffortMedium).
+func WithEffort(e llm.Effort) Option { return func(a *Agent) { a.effort = e } }
+
+// WithTemperature sets the sampling temperature (default: 0.1).
+func WithTemperature(t float64) Option { return func(a *Agent) { a.temperature = t } }
+
 // WithOutput sets the output writer (default: os.Stdout).
 // Tests pass a *bytes.Buffer to capture and suppress output.
 func WithOutput(w io.Writer) Option { return func(a *Agent) { a.out = w } }
@@ -55,11 +67,14 @@ func New(
 	opts ...Option,
 ) *Agent {
 	a := &Agent{
-		provider:  provider,
-		model:     "default",
-		maxSteps:  30,
-		maxTokens: 16_000,
-		out:       os.Stdout,
+		provider:    provider,
+		model:       "default",
+		maxSteps:    30,
+		maxTokens:   16_000,
+		thinking:    llm.ThinkingOn,
+		effort:      llm.EffortMedium,
+		temperature: 0.1,
+		out:         os.Stdout,
 	}
 	for _, o := range opts {
 		o(a)
@@ -161,6 +176,9 @@ func (a *Agent) runStep(
 	rb := llm.NewRequestBuilder().
 		Model(a.model).
 		MaxTokens(a.maxTokens).
+		Thinking(a.thinking).
+		Effort(a.effort).
+		Temperature(a.temperature).
 		Append(messages...).
 		Tools(a.toolDefs...)
 
@@ -173,8 +191,19 @@ func (a *Agent) runStep(
 
 	sd := newStepDisplay(a.out)
 	var stepUsage usage.Record
+	var resolvedModel string
 
 	result := llm.NewEventProcessor(ctx, stream).
+		OnEvent(llm.TypedEventHandler[*llm.StreamStartedEvent](func(ev *llm.StreamStartedEvent) {
+			if ev.Model != "" {
+				resolvedModel = ev.Model
+			}
+		})).
+		OnEvent(llm.TypedEventHandler[*llm.ModelResolvedEvent](func(ev *llm.ModelResolvedEvent) {
+			if ev.Resolved != "" {
+				resolvedModel = ev.Resolved
+			}
+		})).
 		OnReasoningDelta(func(chunk string) {
 			sd.WriteReasoning(chunk)
 		}).
@@ -207,7 +236,7 @@ func (a *Agent) runStep(
 
 	// ── Per-step usage ──
 
-	printStepUsage(a.out, step, stepUsage)
+	printStepUsage(a.out, step, stepUsage, resolvedModel)
 
 	// ── Branch on stop reason (error paths return before appending to history) ──
 

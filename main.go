@@ -34,6 +34,9 @@ func rootCmd() *cobra.Command {
 		maxTokens    int
 		systemPrompt string
 		timeout      time.Duration
+		thinking     llm.ThinkingMode
+		effort       llm.Effort
+		temperature  float64
 	)
 
 	cmd := &cobra.Command{
@@ -47,7 +50,7 @@ With a positional argument it runs the task once and exits.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(_ *cobra.Command, args []string) error {
-			return execute(args, model, workspace, maxSteps, maxTokens, systemPrompt, timeout)
+			return execute(args, model, workspace, maxSteps, maxTokens, systemPrompt, timeout, thinking, effort, temperature)
 		},
 	}
 
@@ -58,8 +61,31 @@ With a positional argument it runs the task once and exits.`,
 	f.IntVar(&maxTokens, "max-tokens", 16_000, "Maximum output tokens per LLM call")
 	f.StringVarP(&systemPrompt, "system", "s", "", "Override the system prompt body")
 	f.DurationVar(&timeout, "timeout", 30*time.Second, "Per-command bash timeout")
+	f.Float64Var(&temperature, "temperature", 0.1, "Sampling temperature 0.0–2.0")
+	f.TextVar(&thinking, "thinking", llm.ThinkingOn, "Thinking mode: auto|on|off")
+	f.TextVar(&effort, "effort", llm.EffortMedium, "Effort level: low|medium|high|max")
 
+	cmd.AddCommand(modelsCmd())
 	return cmd
+}
+
+func modelsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:           "models",
+		Short:         "List all available model IDs",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			provider, err := createProvider(cmd.Context())
+			if err != nil {
+				return err
+			}
+			for _, m := range provider.Models() {
+				fmt.Println(m.ID)
+			}
+			return nil
+		},
+	}
 }
 
 func execute(
@@ -68,6 +94,9 @@ func execute(
 	maxSteps, maxTokens int,
 	systemPrompt string,
 	timeout time.Duration,
+	thinking llm.ThinkingMode,
+	effort llm.Effort,
+	temperature float64,
 ) error {
 	// Resolve and validate workspace
 	if workspace == "" {
@@ -95,6 +124,9 @@ func execute(
 		agent.WithModel(model),
 		agent.WithMaxSteps(maxSteps),
 		agent.WithMaxTokens(maxTokens),
+		agent.WithThinking(thinking),
+		agent.WithEffort(effort),
+		agent.WithTemperature(temperature),
 	)
 
 	// One-shot mode

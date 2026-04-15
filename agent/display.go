@@ -214,12 +214,20 @@ func printToolResult(w io.Writer, output string, isError bool) {
 // Usage lines
 // ---------------------------------------------------------------------------
 
-func printStepUsage(w io.Writer, step int, rec usage.Record) {
+func printStepUsage(w io.Writer, step int, rec usage.Record, model string) {
 	parts := formatUsageParts(rec)
-	if parts == "" {
+	modelPart := ""
+	if model != "" {
+		modelPart = fmt.Sprintf("  model: %s", model)
+	}
+	if parts == "" && modelPart == "" {
 		return
 	}
-	fmt.Fprintf(w, "%s   ── step %d ── %s%s\n", ansiDim, step, parts, ansiReset)
+	if parts == "" {
+		fmt.Fprintf(w, "%s   ── step %d ──%s%s\n", ansiDim, step, modelPart, ansiReset)
+		return
+	}
+	fmt.Fprintf(w, "%s   ── step %d ── %s%s%s\n", ansiDim, step, parts, modelPart, ansiReset)
 }
 
 func printTurnUsage(w io.Writer, turnID string, rec usage.Record) {
