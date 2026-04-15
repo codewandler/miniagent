@@ -2,28 +2,35 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"time"
 
+	"github.com/codewandler/agentcore/interfaces"
+	acoreTool "github.com/codewandler/agentcore/tool"
+	"github.com/codewandler/agentcore/tools/filesystem"
+	"github.com/codewandler/agentcore/tools/shell"
+	"github.com/codewandler/agentcore/tools/toolmgmt"
 	"github.com/codewandler/llm"
 	"github.com/codewandler/llm/msg"
 	"github.com/codewandler/llm/tool"
 	"github.com/codewandler/llm/usage"
 )
 
-// Agent runs an agentic loop: LLM → bash tool → LLM → bash tool → ...
+// Agent runs an agentic loop: LLM → tools → LLM → tools → ...
 // A single Agent instance is reused across REPL turns; conversation history
 // and usage records accumulate across turns.
 type Agent struct {
 	provider    llm.Provider
 	messages    msg.Messages
-	tracker         *usage.Tracker
+	tracker     *usage.Tracker
 	initialMessages msg.Messages
 	toolDefs    []tool.Definition
-	toolHandler tool.NamedHandler
+	allTools    []acoreTool.Tool
+	activation  *ActivationManager
 	model       string
 	maxSteps    int
 	maxTokens   int
@@ -31,6 +38,7 @@ type Agent struct {
 	effort      llm.Effort
 	temperature float64
 	out         io.Writer
+	workspace   string
 }
 
 // Option configures the Agent.
@@ -76,6 +84,7 @@ func New(
 		effort:      llm.EffortMedium,
 		temperature: 0.1,
 		out:         os.Stdout,
+		workspace:   workspace,
 	}
 	for _, o := range opts {
 		o(a)
@@ -93,10 +102,39 @@ func New(
 	a.initialMessages = initMsg
 	a.messages = initMsg
 
-	a.toolDefs = []tool.Definition{BashDefinition()}
-	a.toolHandler = NewBashHandler(workspace, cmdTimeout)
+	// Build agentcore tools
+	a.setupTools(workspace, cmdTimeout)
 
 	return a
+}
+
+// setupTools initializes all tools from agentcore packages
+func (a *Agent) setupTools(workspace string, cmdTimeout time.Duration) {
+	// Collect all tools
+	var allTools []acoreTool.Tool
+
+	// Shell tools (bash)
+	shellTools := shell.Tools()
+	allTools = append(allTools, shellTools...)
+
+	// Filesystem tools
+	fsTools := filesystem.Tools()
+	allTools = append(allTools, fsTools...)
+
+	a.allTools = allTools
+
+	// Create activation manager
+	a.activation = NewActivationManager(allTools)
+
+	// Add toolmgmt tools now that we have the activation manager
+	tmTools := toolmgmt.Tools()
+	a.allTools = append(a.allTools, tmTools...)
+	a.activation.allTools = a.allTools
+
+	// Convert agentcore tools to llm/tool definitions
+	for _, t := range a.allTools {
+		a.toolDefs = append(a.toolDefs, convertToolDefinition(t))
+	}
 }
 
 // Tracker returns the usage tracker for session-level reporting.
@@ -129,10 +167,10 @@ func (a *Agent) RunTurn(ctx context.Context, turnID, task string) error {
 	var stepsCompleted int
 
 	for step := 1; step <= a.maxSteps; step++ {
-		// [REVIEW FIX #5]: runStep returns (done, error) — no errContinue sentinel.
+		// runStep returns (done, error) — no errContinue sentinel.
 		done, err := a.runStep(ctx, turnID, step, &stepsCompleted)
 		if err != nil {
-			// [REVIEW FIX #4]: always rollback inside the loop.
+			// always rollback inside the loop.
 			// Every error from runStep leaves history in an invalid
 			// alternating-role state. errMaxStepsReached is only
 			// returned AFTER the loop (no rollback needed there).
@@ -203,6 +241,9 @@ func (a *Agent) runStep(
 	var stepUsage usage.Record
 	var resolvedModel string
 
+	// Create tool handlers for all agentcore tools
+	toolHandlers := a.createToolHandlers()
+
 	result := llm.NewEventProcessor(ctx, stream).
 		OnEvent(llm.TypedEventHandler[*llm.StreamStartedEvent](func(ev *llm.StreamStartedEvent) {
 			if ev.Model != "" {
@@ -222,8 +263,8 @@ func (a *Agent) runStep(
 		}).
 		OnEvent(llm.TypedEventHandler[*llm.ToolCallEvent](func(ev *llm.ToolCallEvent) {
 			tc := ev.ToolCall
-			command, _ := tc.ToolArgs()["command"].(string)
-			sd.PrintToolCall(tc.ToolName(), command)
+			// For generic tools from agentcore, just show the name
+			sd.PrintToolCall(tc.ToolName(), "")
 		})).
 		OnEvent(llm.TypedEventHandler[*llm.UsageUpdatedEvent](func(ev *llm.UsageUpdatedEvent) {
 			rec := ev.Record
@@ -231,14 +272,12 @@ func (a *Agent) runStep(
 			a.tracker.Record(rec)
 			stepUsage = rec
 		})).
-		HandleTool(a.toolHandler).
+		HandleTool(toolHandlers...).
 		Result()
 
 	sd.End()
 
 	// ── Display tool results ──
-	// [REVIEW FIX #2]: commands already shown live via ToolCallEvent.
-	// Only show result lines here — no command duplication.
 	for _, tr := range result.ToolResults() {
 		output := extractBashOutput(tr.ToolOutput())
 		printToolResult(a.out, output, tr.IsError())
@@ -279,8 +318,40 @@ func (a *Agent) runStep(
 	}
 }
 
+// createToolHandlers creates handlers for all agentcore tools
+func (a *Agent) createToolHandlers() []tool.NamedHandler {
+	var handlers []tool.NamedHandler
+
+	for _, t := range a.allTools {
+		toolCopy := t // capture for closure
+		handlers = append(handlers, tool.NewHandler[json.RawMessage, interface{}](
+			toolCopy.Name(),
+			func(ctx context.Context, input json.RawMessage) (*interface{}, error) {
+				// Create agentcore context with activation state
+				toolCtx := &agentcoreToolContext{
+					workspace:  a.workspace,
+					activation: a.activation,
+					extra:      make(map[string]interface{}),
+				}
+				toolCtx.extra[toolmgmt.KeyActivationState] = a.activation
+
+				// Execute the agentcore tool
+				result, err := toolCopy.Execute(toolCtx, input)
+				if err != nil {
+					return nil, err
+				}
+
+				// Convert result to interface{} and return as pointer
+				output := interface{}(result.String())
+				return &output, nil
+			},
+		))
+	}
+
+	return handlers
+}
+
 // aggregateTurn sums all usage records for a given turn ID.
-// TODO: upstream an AggregateRecords([]Record) helper to the usage package.
 func (a *Agent) aggregateTurn(turnID string) usage.Record {
 	recs := a.tracker.Filter(usage.ByTurnID(turnID), usage.ExcludeEstimates())
 	var agg usage.Record
@@ -300,4 +371,66 @@ func (a *Agent) aggregateTurn(turnID string) usage.Record {
 		agg.Tokens = append(agg.Tokens, usage.TokenItem{Kind: kind, Count: count})
 	}
 	return agg
+}
+
+// convertToolDefinition converts an agentcore tool to an llm/tool Definition
+func convertToolDefinition(t acoreTool.Tool) tool.Definition {
+	// Get the schema from the agentcore tool and convert it to map[string]any
+	schema := t.Schema()
+	
+	// Marshal and unmarshal to get clean map[string]any
+	raw, _ := json.Marshal(schema)
+	var params map[string]any
+	_ = json.Unmarshal(raw, &params)
+	
+	// Clean up metadata fields
+	delete(params, "$schema")
+	delete(params, "$id")
+	
+	return tool.Definition{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters:  params,
+	}
+}
+
+// agentcoreToolContext implements acoreTool.Ctx for agentcore tools
+type agentcoreToolContext struct {
+	workspace  string
+	activation interfaces.ActivationState
+	extra      map[string]interface{}
+}
+
+func (c *agentcoreToolContext) WorkDir() string {
+	return c.workspace
+}
+
+func (c *agentcoreToolContext) Extra() map[string]interface{} {
+	return c.extra
+}
+
+// Deadline and Done implement context.Context
+func (c *agentcoreToolContext) Deadline() (time.Time, bool) {
+	return time.Time{}, false
+}
+
+func (c *agentcoreToolContext) Done() <-chan struct{} {
+	return nil
+}
+
+func (c *agentcoreToolContext) Err() error {
+	return nil
+}
+
+func (c *agentcoreToolContext) Value(key interface{}) interface{} {
+	return nil
+}
+
+// AgentID and SessionID implement agentcore/tool.Ctx
+func (c *agentcoreToolContext) AgentID() string {
+	return ""
+}
+
+func (c *agentcoreToolContext) SessionID() string {
+	return ""
 }
