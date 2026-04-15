@@ -70,7 +70,7 @@ tasks:
         USER_UID=$(id -u)
         USER_GID=$(id -g)
 
-        docker run --rm -it \
+        docker run --rm -i \
           --security-opt no-new-privileges \
           --cap-drop ALL \
           --read-only \
@@ -78,6 +78,7 @@ tasks:
           --tmpfs /root:rw,nosuid,noexec,size=32m \
           -u "${USER_UID}:${USER_GID}" \
           -v "{{.GOROOT}}:/usr/local/go:ro" \
+          -v "$HOME/.claude:/tmp/.claude:ro" \
           -v "{{.REPO_ROOT}}:/repo" \
           -e HOME=/tmp \
           -e GOCACHE=/repo/cmd/miniagent/.go-cache/build \

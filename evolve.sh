@@ -124,7 +124,7 @@ run_one_benchmark() {
 
   # Pull the EXPECTED: line (if any) — string that must appear in /tmp/bench_result.txt
   local expected; expected=$(grep "^EXPECTED:" "$bench_file" | head -1 | sed 's/^EXPECTED:[[:space:]]*//' || true)
-  local task_content; task_content=$(cat "$bench_file")
+  local task_content; task_content=$(grep -v "^EXPECTED:" "$bench_file")
 
   rm -f /tmp/bench_result.txt
 
