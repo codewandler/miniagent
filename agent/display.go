@@ -85,7 +85,7 @@ func formatUsageParts(rec usage.Record) string {
 		if count == 0 {
 			continue
 		}
-		s := fmt.Sprintf("%s: %s", kl.label, formatTokenCount(count))
+		s := fmt.Sprintf("%s: %s", kl.label, compactCount(count))
 		// Annotate cache_r with the hit rate: reads / (reads + writes).
 		// 100 % means the cache was fully warm; 0 % would mean no cache_r at all
 		// (which cannot happen here since count > 0 for KindCacheRead).
@@ -280,4 +280,18 @@ func PrintSessionUsage(w io.Writer, rec usage.Record) {
 
 func printError(w io.Writer, err error) {
 	fmt.Fprintf(w, "\n%sError: %s%s\n", ansiBrightRed, err, ansiReset)
+}
+
+// compactCount returns a human-readable compact representation of a count:
+// - < 1000: returns the number as-is (e.g., "842")
+// - >= 1000 and < 100,000: returns X.Xk with 1 decimal (e.g., "1.3k", "12.5k", "99.9k")
+// - >= 100,000: returns XXXk with no decimals (e.g., "100k", "123k", "999k")
+func compactCount(n int) string {
+	if n < 1000 {
+		return fmt.Sprintf("%d", n)
+	}
+	if n < 100_000 {
+		return fmt.Sprintf("%.1fk", float64(n)/1000)
+	}
+	return fmt.Sprintf("%.0fk", float64(n)/1000)
 }

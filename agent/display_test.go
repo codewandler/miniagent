@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestFormatTokenCount(t *testing.T) {
+func TestCompactCount(t *testing.T) {
 	tests := []struct {
 		input int
 		want  string
@@ -17,15 +17,20 @@ func TestFormatTokenCount(t *testing.T) {
 		{0, "0"},
 		{42, "42"},
 		{999, "999"},
-		{1000, "1\u2009000"},
-		{8432, "8\u2009432"},
-		{12345, "12\u2009345"},
-		{100000, "100\u2009000"},
-		{1234567, "1\u2009234\u2009567"},
+		{1000, "1.0k"},
+		{1340, "1.3k"},
+		{1500, "1.5k"},
+		{9999, "10.0k"},
+		{10000, "10.0k"},
+		{10500, "10.5k"},
+		{99999, "100.0k"},
+		{100000, "100k"},
+		{123456, "123k"},
+		{999999, "1000k"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			assert.Equal(t, tt.want, formatTokenCount(tt.input))
+			assert.Equal(t, tt.want, compactCount(tt.input))
 		})
 	}
 }
@@ -70,9 +75,8 @@ func TestFormatUsageParts(t *testing.T) {
 			Cost: usage.Cost{Total: 0.0023},
 		}
 		parts := formatUsageParts(rec)
-		assert.Contains(t, parts, "input: 1\u2009204")
-		// cache_r is annotated with hit rate; no cache_w → 100 % hit
-		assert.Contains(t, parts, "cache_r: 8\u2009432 (100%)")
+		assert.Contains(t, parts, "input: 1.2k")
+		assert.Contains(t, parts, "cache_r: 8.4k (100%)")
 		assert.Contains(t, parts, "output: 87")
 		assert.Contains(t, parts, "cost: $0.0023")
 	})
@@ -108,8 +112,6 @@ func TestFormatUsageParts(t *testing.T) {
 	})
 
 	t.Run("cache write only cold start 0 pct hit", func(t *testing.T) {
-		// No cache reads at all: cache_r line is omitted entirely (zero guard),
-		// so the hit-rate annotation is also absent.
 		rec := usage.Record{
 			Tokens: usage.TokenItems{
 				{Kind: usage.KindInput, Count: 500},
