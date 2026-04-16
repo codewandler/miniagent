@@ -4,17 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/signal"
-	"path/filepath"
-	"time"
-
-	"github.com/spf13/cobra"
-
 	"github.com/codewandler/llm"
 	"github.com/codewandler/llm/cmd/llmcli/store"
 	"github.com/codewandler/llm/provider/auto"
 	"github.com/codewandler/miniagent/agent"
+	"github.com/spf13/cobra"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 func main() {
@@ -25,7 +24,6 @@ func main() {
 		os.Exit(1)
 	}
 }
-
 func rootCmd() *cobra.Command {
 	var (
 		model        string
@@ -38,12 +36,10 @@ func rootCmd() *cobra.Command {
 		effort       llm.Effort
 		temperature  float64
 	)
-
 	cmd := &cobra.Command{
 		Use:   "miniagent [task]",
 		Short: "A minimal agentic CLI with a bash tool",
 		Long: `miniagent runs an autonomous agent loop: LLM → bash → LLM → ...
-
 With no arguments it starts an interactive REPL.
 With a positional argument it runs the task once and exits.`,
 		Args:          cobra.MaximumNArgs(1),
@@ -53,7 +49,6 @@ With a positional argument it runs the task once and exits.`,
 			return execute(args, model, workspace, maxSteps, maxTokens, systemPrompt, timeout, thinking, effort, temperature)
 		},
 	}
-
 	f := cmd.Flags()
 	f.StringVarP(&model, "model", "m", "default", "Model alias or full path")
 	f.StringVarP(&workspace, "workspace", "w", "", "Working directory (default: $PWD)")
@@ -64,11 +59,11 @@ With a positional argument it runs the task once and exits.`,
 	f.Float64Var(&temperature, "temperature", 0.1, "Sampling temperature 0.0–2.0")
 	f.TextVar(&thinking, "thinking", llm.ThinkingOn, "Thinking mode: auto|on|off")
 	f.TextVar(&effort, "effort", llm.EffortMedium, "Effort level: low|medium|high|max")
-
+	_ = cmd.RegisterFlagCompletionFunc("model", completeModelFlag)
 	cmd.AddCommand(modelsCmd())
+	cmd.AddCommand(completionCmd(cmd))
 	return cmd
 }
-
 func modelsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:           "models",
@@ -87,7 +82,144 @@ func modelsCmd() *cobra.Command {
 		},
 	}
 }
-
+func completionCmd(root *cobra.Command) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "completion",
+		Short:         "Generate or install shell completion",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "bash",
+		Short: "Generate bash completion script",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return root.GenBashCompletionV2(os.Stdout, true)
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "zsh",
+		Short: "Generate zsh completion script",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return root.GenZshCompletion(os.Stdout)
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "fish",
+		Short: "Generate fish completion script",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return root.GenFishCompletion(os.Stdout, true)
+		},
+	})
+	cmd.AddCommand(completionInstallCmd(root))
+	return cmd
+}
+func completionInstallCmd(root *cobra.Command) *cobra.Command {
+	var file string
+	cmd := &cobra.Command{
+		Use:           "install [bash|zsh|fish]",
+		Short:         "Install shell completion to a standard user location",
+		Args:          cobra.MaximumNArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(_ *cobra.Command, args []string) error {
+			shell := ""
+			if len(args) == 1 {
+				shell = strings.ToLower(args[0])
+			} else {
+				shell = detectShell()
+			}
+			if shell == "" {
+				return fmt.Errorf("unable to detect shell; pass bash, zsh, or fish")
+			}
+			target, err := completionInstallPath(shell, file)
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return fmt.Errorf("create completion directory: %w", err)
+			}
+			f, err := os.Create(target)
+			if err != nil {
+				return fmt.Errorf("create completion file: %w", err)
+			}
+			defer f.Close()
+			switch shell {
+			case "bash":
+				err = root.GenBashCompletionV2(f, true)
+			case "zsh":
+				err = root.GenZshCompletion(f)
+			case "fish":
+				err = root.GenFishCompletion(f, true)
+			default:
+				return fmt.Errorf("unsupported shell %q", shell)
+			}
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stdout, "Installed %s completion to %s\n", shell, target)
+			fmt.Fprintln(os.Stdout, "Restart your shell or source the file to enable completions.")
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&file, "file", "", "Override installation target file")
+	return cmd
+}
+func detectShell() string {
+	shell := strings.ToLower(filepath.Base(os.Getenv("SHELL")))
+	switch shell {
+	case "bash", "zsh", "fish":
+		return shell
+	default:
+		return ""
+	}
+}
+func completionInstallPath(shell, override string) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("get home directory: %w", err)
+	}
+	switch shell {
+	case "bash":
+		return filepath.Join(home, ".local/share/bash-completion/completions/miniagent"), nil
+	case "zsh":
+		return filepath.Join(home, ".zsh/completions/_miniagent"), nil
+	case "fish":
+		return filepath.Join(home, ".config/fish/completions/miniagent.fish"), nil
+	default:
+		return "", fmt.Errorf("unsupported shell %q", shell)
+	}
+}
+func completeModelFlag(cmd *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	provider, err := createProvider(cmd.Context())
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	matches := make([]string, 0, len(provider.Models()))
+	for _, m := range provider.Models() {
+		if !containsFold(m.ID, toComplete) && !containsFold(m.Name, toComplete) {
+			continue
+		}
+		desc := m.Name
+		if desc == "" {
+			desc = m.Provider
+		}
+		if desc != "" {
+			matches = append(matches, m.ID+"	"+desc)
+		} else {
+			matches = append(matches, m.ID)
+		}
+	}
+	return matches, cobra.ShellCompDirectiveNoFileComp
+}
+func containsFold(s, substr string) bool {
+	if substr == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
 func execute(
 	args []string,
 	model, workspace string,
@@ -111,14 +243,12 @@ func execute(
 	if err != nil || !info.IsDir() {
 		return fmt.Errorf("workspace directory does not exist: %s", workspace)
 	}
-
 	// Provider setup (mirrors cmd/llmcli)
 	ctx := context.Background()
 	provider, err := createProvider(ctx)
 	if err != nil {
 		return err
 	}
-
 	// Build agent
 	a := agent.New(provider, workspace, timeout, systemPrompt,
 		agent.WithModel(model),
@@ -128,7 +258,6 @@ func execute(
 		agent.WithEffort(effort),
 		agent.WithTemperature(temperature),
 	)
-
 	// One-shot mode
 	if len(args) == 1 {
 		ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
@@ -143,7 +272,6 @@ func execute(
 		}
 		return err
 	}
-
 	// REPL mode
 	return agent.RunREPL(ctx, a, os.Stdin)
 }
@@ -152,26 +280,21 @@ func execute(
 func createProvider(ctx context.Context) (llm.Provider, error) {
 	var autoOpts []auto.Option
 	autoOpts = append(autoOpts, auto.WithName("miniagent"))
-
 	// Claude OAuth token store — non-fatal if unavailable
 	if dir, err := store.DefaultDir(); err == nil {
 		if ts, err := store.NewFileTokenStore(dir); err == nil {
 			autoOpts = append(autoOpts, auto.WithClaude(ts))
 		}
 	}
-
 	provider, err := auto.New(ctx, autoOpts...)
 	if err != nil {
 		return nil, fmt.Errorf(`no LLM providers found.
-
 Set one of:
   ANTHROPIC_API_KEY    — Anthropic direct API
   OPENAI_API_KEY       — OpenAI
   OPENROUTER_API_KEY   — OpenRouter
-
 Or authenticate with Claude:
   llmcli auth login
-
 (%w)`, err)
 	}
 	return provider, nil

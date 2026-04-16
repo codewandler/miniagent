@@ -18,6 +18,13 @@ commands to carry them out, and keeps going until the job is done.
 task install
 ```
 
+Generate and install shell completions:
+
+```sh
+miniagent completion install
+miniagent completion install zsh
+```
+
 You need one LLM API key — set any of:
 
 ```sh

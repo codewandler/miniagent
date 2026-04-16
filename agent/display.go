@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/charmbracelet/glamour"
 	"github.com/codewandler/llm/usage"
 )
 
@@ -129,8 +130,9 @@ const (
 )
 
 type stepDisplay struct {
-	w     io.Writer
-	state displayState
+	w       io.Writer
+	state   displayState
+	textBuf strings.Builder
 }
 
 func newStepDisplay(w io.Writer) *stepDisplay {
@@ -146,40 +148,62 @@ func (d *stepDisplay) WriteReasoning(chunk string) {
 	fmt.Fprint(d.w, chunk)
 }
 
-// WriteText outputs a text token chunk in normal weight.
+// WriteText buffers a text token chunk; the full text is rendered as markdown
+// when End() is called.
 func (d *stepDisplay) WriteText(chunk string) {
 	switch d.state {
-	case stateIdle:
-		fmt.Fprint(d.w, "\n")
 	case stateReasoning:
 		fmt.Fprintf(d.w, "%s\n\n", ansiReset)
 	}
 	if d.state != stateText {
 		d.state = stateText
 	}
-	fmt.Fprint(d.w, chunk)
+	d.textBuf.WriteString(chunk)
 }
 
-// PrintToolCall displays a tool call header. Resets any open ANSI state.
+// PrintToolCall displays a tool call header. Flushes any buffered text as
+// markdown and resets any open ANSI state.
 func (d *stepDisplay) PrintToolCall(name, command string) {
 	switch d.state {
 	case stateReasoning:
 		fmt.Fprintf(d.w, "%s\n", ansiReset)
 	case stateText:
-		fmt.Fprintln(d.w)
+		fmt.Fprint(d.w, "\n")
+		fmt.Fprint(d.w, renderMarkdown(d.textBuf.String()))
+		d.textBuf.Reset()
 	}
 	d.state = stateIdle
 	fmt.Fprintf(d.w, "\n%s🔧 %s%s\n", ansiBrightYellow, name, ansiReset)
 	fmt.Fprintf(d.w, "   %s$ %s%s\n", ansiDim, command, ansiReset)
 }
 
-// End closes any open ANSI state. Call after Result() returns.
+// renderMarkdown renders markdown text for terminal display using glamour.
+// Falls back to plain text if rendering fails.
+func renderMarkdown(text string) string {
+	r, err := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(0),
+	)
+	if err != nil {
+		return text
+	}
+	out, err := r.Render(text)
+	if err != nil {
+		return text
+	}
+	return out
+}
+
+// End flushes any buffered text (rendered as markdown) and closes open ANSI
+// state. Call after Result() returns.
 func (d *stepDisplay) End() {
 	switch d.state {
 	case stateReasoning:
 		fmt.Fprintf(d.w, "%s\n", ansiReset)
 	case stateText:
-		fmt.Fprintln(d.w)
+		fmt.Fprint(d.w, "\n")
+		fmt.Fprint(d.w, renderMarkdown(d.textBuf.String()))
+		d.textBuf.Reset()
 	}
 	d.state = stateIdle
 }

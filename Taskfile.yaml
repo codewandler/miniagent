@@ -25,11 +25,6 @@ tasks:
     dir: .
     cmds:
       - go install ./
-    sources:
-      - agent/**/*.go
-      - "**/*.go"
-      - go.mod
-      - go.sum
 
   # ── _build-binary (internal) ──────────────────────────────────────────────
   _build-binary:

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.0 — 2026-04-16
+
+First tagged release of the standalone CLI. This release turns miniagent into a Cobra-based command tree, adds `completion` and `completion install` commands for bash/zsh/fish, and wires model flag completion for `--model` / `-m`.
+
+It also keeps the existing agent loop, `/new` REPL reset, temperature/thinking/effort flags, and agentcore tool integration.
+
+---
+
 Entries are added automatically by the self-improvement loop (`task evolve`).
 Each entry corresponds to one accepted improvement cycle.
 No version numbers — revisions are synthetic counters local to this loop.
