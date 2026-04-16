@@ -265,13 +265,13 @@ func printTurnUsage(w io.Writer, turnID string, rec usage.Record) {
 // PrintSessionUsage prints the session-total usage line.
 // Always emits the separator so REPL exit is visible even with no usage.
 // Exported — called from main.go for one-shot mode.
-func PrintSessionUsage(w io.Writer, rec usage.Record) {
+func PrintSessionUsage(w io.Writer, sessionID string, rec usage.Record) {
 	parts := formatUsageParts(rec)
 	if parts == "" {
-		fmt.Fprintf(w, "── session ──\n")
+		fmt.Fprintf(w, "── session %s ──\n", sessionID)
 		return
 	}
-	fmt.Fprintf(w, "── session ── %s\n", parts)
+	fmt.Fprintf(w, "── session %s ── %s\n", sessionID, parts)
 }
 
 // ---------------------------------------------------------------------------

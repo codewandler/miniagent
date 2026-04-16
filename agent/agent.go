@@ -19,6 +19,7 @@ import (
 	"github.com/codewandler/llm/msg"
 	"github.com/codewandler/llm/tool"
 	"github.com/codewandler/llm/usage"
+	nanoid "github.com/matoous/go-nanoid/v2"
 )
 
 // Agent runs an agentic loop: LLM → tools → LLM → tools → ...
@@ -38,6 +39,7 @@ type Agent struct {
 	workspace       string
 	toolTimeout     time.Duration
 	systemOverride  string
+	sessionID       string
 }
 
 // Option configures the Agent.
@@ -124,12 +126,14 @@ func WithSystemOverride(prompt string) Option { return func(a *Agent) { a.system
 // New creates an Agent. All settings are configurable via Options.
 // Defaults: workspace = cwd, toolTimeout = 30s, maxSteps = 30.
 func New(provider llm.Provider, opts ...Option) *Agent {
+	sessionID, _ := nanoid.Generate("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", 8)
 	a := &Agent{
 		provider:     provider,
 		inference:    DefaultInferenceOptions(),
 		maxSteps:     30,
 		out:          os.Stdout,
 		toolTimeout: 30 * time.Second,
+		sessionID:    sessionID,
 	}
 	for _, o := range opts {
 		o(a)
@@ -190,6 +194,9 @@ func (a *Agent) setupTools(workspace string, toolTimeout time.Duration) {
 	}
 }
 
+// SessionID returns the current session identifier.
+func (a *Agent) SessionID() string { return a.sessionID }
+
 // Tracker returns the usage tracker for session-level reporting.
 func (a *Agent) Tracker() *usage.Tracker { return a.tracker }
 
@@ -202,11 +209,13 @@ func (a *Agent) ParamsSummary() string {
 	return fmt.Sprintf("model: %s  thinking: %s  effort: %s", a.inference.Model, a.inference.Thinking, a.inference.Effort)
 }
 
-// Reset clears conversation history back to the initial system prompt and
-// starts a fresh usage tracker. Called by the REPL /new command.
+// Reset clears conversation history back to the initial system prompt,
+// starts a fresh usage tracker, and generates a new session ID.
+// Called by the REPL /new command.
 func (a *Agent) Reset() {
 	a.messages = a.initialMessages
 	a.tracker = usage.NewTracker(usage.WithCostCalculator(usage.Default()))
+	a.sessionID, _ = nanoid.Generate("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", 8)
 }
 
 // ErrMaxStepsReached is returned by RunTurn when the step loop is exhausted

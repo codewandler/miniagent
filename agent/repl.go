@@ -46,7 +46,7 @@ func RunREPL(ctx context.Context, a *Agent, input io.Reader) error {
 			} else {
 				// at prompt: print session totals and exit
 				fmt.Fprintln(out)
-				PrintSessionUsage(out, a.Tracker().Aggregate())
+				PrintSessionUsage(out, a.SessionID(), a.Tracker().Aggregate())
 				os.Exit(130)
 			}
 		}
@@ -91,6 +91,6 @@ func RunREPL(ctx context.Context, a *Agent, input io.Reader) error {
 	}
 
 	fmt.Fprintln(out)
-	PrintSessionUsage(out, a.Tracker().Aggregate())
+	PrintSessionUsage(out, a.SessionID(), a.Tracker().Aggregate())
 	return nil
 }

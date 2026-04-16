@@ -270,7 +270,7 @@ func execute(
 		defer cancel()
 		err := a.RunTurn(ctx, "1", args[0])
 		fmt.Println()
-		agent.PrintSessionUsage(os.Stdout, a.Tracker().Aggregate())
+		agent.PrintSessionUsage(os.Stdout, a.SessionID(), a.Tracker().Aggregate())
 		if errors.Is(err, agent.ErrMaxStepsReached) {
 			// Partial output was produced; treat as a warning, not a hard failure.
 			fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
