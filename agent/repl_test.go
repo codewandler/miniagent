@@ -51,6 +51,20 @@ func TestRunREPL_EOF(t *testing.T) {
 	assert.Contains(t, buf.String(), "session")
 }
 
+func TestRunREPL_ShowsParamsBeforePrompt(t *testing.T) {
+	a, buf := newREPLTestAgent(t)
+	input := strings.NewReader("exit\n")
+
+	err := RunREPL(context.Background(), a, input)
+	assert.NoError(t, err)
+
+	out := buf.String()
+	assert.Contains(t, out, "model: default")
+	assert.Contains(t, out, "thinking: on")
+	assert.Contains(t, out, "effort: medium")
+	assert.Less(t, strings.Index(out, "model: default"), strings.Index(out, "miniagent> "))
+}
+
 func TestRunREPL_ExecutesThenExits(t *testing.T) {
 	a, buf := newREPLTestAgent(t)
 	input := strings.NewReader("say hello\nexit\n")

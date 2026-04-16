@@ -21,6 +21,8 @@ func RunREPL(ctx context.Context, a *Agent, input io.Reader) error {
 	out := a.Out()
 	turnID := 0
 
+	fmt.Fprintf(out, "%s[%s]%s\n", ansiDim, a.ParamsSummary(), ansiReset)
+
 	// Persistent signal handler — routes SIGINT based on agent state.
 	var (
 		mu         sync.Mutex

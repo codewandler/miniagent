@@ -24,43 +24,86 @@ import (
 // A single Agent instance is reused across REPL turns; conversation history
 // and usage records accumulate across turns.
 type Agent struct {
-	provider    llm.Provider
-	messages    msg.Messages
-	tracker     *usage.Tracker
+	provider        llm.Provider
+	messages        msg.Messages
+	tracker         *usage.Tracker
 	initialMessages msg.Messages
-	toolDefs    []tool.Definition
-	allTools    []acoreTool.Tool
-	activation  *ActivationManager
-	model       string
-	maxSteps    int
-	maxTokens   int
-	thinking    llm.ThinkingMode
-	effort      llm.Effort
-	temperature float64
-	out         io.Writer
-	workspace   string
+	toolDefs        []tool.Definition
+	allTools        []acoreTool.Tool
+	activation      *ActivationManager
+	inference       InferenceOptions
+	maxSteps        int
+	out             io.Writer
+	workspace       string
 }
 
 // Option configures the Agent.
 type Option func(*Agent)
 
-// WithModel sets the model alias or full path (default: "default").
-func WithModel(m string) Option { return func(a *Agent) { a.model = m } }
+// InferenceOption configures InferenceOptions.
+type InferenceOption func(*InferenceOptions)
+
+// InferenceOptions holds the model/inference parameters used for each LLM call.
+type InferenceOptions struct {
+	Model       string
+	MaxTokens   int
+	Thinking    llm.ThinkingMode
+	Effort      llm.Effort
+	Temperature float64
+}
+
+// DefaultInferenceOptions returns the default inference settings.
+func DefaultInferenceOptions() InferenceOptions {
+	return InferenceOptions{
+		Model:       "default",
+		MaxTokens:   16_000,
+		Thinking:    llm.ThinkingOn,
+		Effort:      llm.EffortMedium,
+		Temperature: 0.1,
+	}
+}
+
+// NewInferenceOptions builds inference settings from defaults plus options.
+func NewInferenceOptions(opts ...InferenceOption) InferenceOptions {
+	cfg := DefaultInferenceOptions()
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return cfg
+}
+
+// WithModel sets the model alias or full path.
+func WithModel(m string) InferenceOption {
+	return func(o *InferenceOptions) { o.Model = m }
+}
+
+// WithMaxTokens sets the maximum output tokens per LLM call.
+func WithMaxTokens(n int) InferenceOption {
+	return func(o *InferenceOptions) { o.MaxTokens = n }
+}
+
+// WithThinking sets the thinking mode.
+func WithThinking(m llm.ThinkingMode) InferenceOption {
+	return func(o *InferenceOptions) { o.Thinking = m }
+}
+
+// WithEffort sets the effort level.
+func WithEffort(e llm.Effort) InferenceOption {
+	return func(o *InferenceOptions) { o.Effort = e }
+}
+
+// WithTemperature sets the sampling temperature.
+func WithTemperature(t float64) InferenceOption {
+	return func(o *InferenceOptions) { o.Temperature = t }
+}
+
+// WithInferenceOptions sets all inference options at once.
+func WithInferenceOptions(opts InferenceOptions) Option {
+	return func(a *Agent) { a.inference = opts }
+}
 
 // WithMaxSteps sets the maximum agent loop iterations per turn (default: 30).
 func WithMaxSteps(n int) Option { return func(a *Agent) { a.maxSteps = n } }
-
-// WithMaxTokens sets the maximum output tokens per LLM call (default: 16000).
-func WithMaxTokens(n int) Option { return func(a *Agent) { a.maxTokens = n } }
-
-// WithThinking sets the thinking mode (default: ThinkingOn).
-func WithThinking(m llm.ThinkingMode) Option { return func(a *Agent) { a.thinking = m } }
-
-// WithEffort sets the effort level (default: EffortMedium).
-func WithEffort(e llm.Effort) Option { return func(a *Agent) { a.effort = e } }
-
-// WithTemperature sets the sampling temperature (default: 0.1).
-func WithTemperature(t float64) Option { return func(a *Agent) { a.temperature = t } }
 
 // WithOutput sets the output writer (default: os.Stdout).
 // Tests pass a *bytes.Buffer to capture and suppress output.
@@ -76,15 +119,11 @@ func New(
 	opts ...Option,
 ) *Agent {
 	a := &Agent{
-		provider:    provider,
-		model:       "default",
-		maxSteps:    30,
-		maxTokens:   16_000,
-		thinking:    llm.ThinkingOn,
-		effort:      llm.EffortMedium,
-		temperature: 0.1,
-		out:         os.Stdout,
-		workspace:   workspace,
+		provider:  provider,
+		inference: DefaultInferenceOptions(),
+		maxSteps:  30,
+		out:       os.Stdout,
+		workspace: workspace,
 	}
 	for _, o := range opts {
 		o(a)
@@ -142,6 +181,12 @@ func (a *Agent) Tracker() *usage.Tracker { return a.tracker }
 
 // Out returns the output writer (for REPL to write to the same destination).
 func (a *Agent) Out() io.Writer { return a.out }
+
+// ParamsSummary returns a short human-readable summary of the active model
+// parameters for display before the REPL prompt.
+func (a *Agent) ParamsSummary() string {
+	return fmt.Sprintf("model: %s  thinking: %s  effort: %s", a.inference.Model, a.inference.Thinking, a.inference.Effort)
+}
 
 // Reset clears conversation history back to the initial system prompt and
 // starts a fresh usage tracker. Called by the REPL /new command.
@@ -222,11 +267,11 @@ func (a *Agent) runStep(
 	}
 
 	rb := llm.NewRequestBuilder().
-		Model(a.model).
-		MaxTokens(a.maxTokens).
-		Thinking(a.thinking).
-		Effort(a.effort).
-		Temperature(a.temperature).
+		Model(a.inference.Model).
+		MaxTokens(a.inference.MaxTokens).
+		Thinking(a.inference.Thinking).
+		Effort(a.inference.Effort).
+		Temperature(a.inference.Temperature).
 		Append(messages...).
 		Tools(a.toolDefs...)
 
@@ -377,16 +422,16 @@ func (a *Agent) aggregateTurn(turnID string) usage.Record {
 func convertToolDefinition(t acoreTool.Tool) tool.Definition {
 	// Get the schema from the agentcore tool and convert it to map[string]any
 	schema := t.Schema()
-	
+
 	// Marshal and unmarshal to get clean map[string]any
 	raw, _ := json.Marshal(schema)
 	var params map[string]any
 	_ = json.Unmarshal(raw, &params)
-	
+
 	// Clean up metadata fields
 	delete(params, "$schema")
 	delete(params, "$id")
-	
+
 	return tool.Definition{
 		Name:        t.Name(),
 		Description: t.Description(),

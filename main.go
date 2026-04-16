@@ -24,17 +24,16 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+type InferenceConfig = agent.InferenceOptions
+
 func rootCmd() *cobra.Command {
 	var (
-		model        string
+		inference    InferenceConfig = agent.DefaultInferenceOptions()
+		maxSteps                     = 30
 		workspace    string
-		maxSteps     int
-		maxTokens    int
 		systemPrompt string
 		timeout      time.Duration
-		thinking     llm.ThinkingMode
-		effort       llm.Effort
-		temperature  float64
 	)
 	cmd := &cobra.Command{
 		Use:   "miniagent [task]",
@@ -46,19 +45,19 @@ With a positional argument it runs the task once and exits.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(_ *cobra.Command, args []string) error {
-			return execute(args, model, workspace, maxSteps, maxTokens, systemPrompt, timeout, thinking, effort, temperature)
+			return execute(args, inference, maxSteps, workspace, systemPrompt, timeout)
 		},
 	}
 	f := cmd.Flags()
-	f.StringVarP(&model, "model", "m", "default", "Model alias or full path")
+	f.StringVarP(&inference.Model, "model", "m", inference.Model, "Model alias or full path")
 	f.StringVarP(&workspace, "workspace", "w", "", "Working directory (default: $PWD)")
-	f.IntVar(&maxSteps, "max-steps", 30, "Maximum agent loop iterations per turn")
-	f.IntVar(&maxTokens, "max-tokens", 16_000, "Maximum output tokens per LLM call")
+	f.IntVar(&maxSteps, "max-steps", maxSteps, "Maximum agent loop iterations per turn")
+	f.IntVar(&inference.MaxTokens, "max-tokens", inference.MaxTokens, "Maximum output tokens per LLM call")
 	f.StringVarP(&systemPrompt, "system", "s", "", "Override the system prompt body")
 	f.DurationVar(&timeout, "timeout", 30*time.Second, "Per-command bash timeout")
-	f.Float64Var(&temperature, "temperature", 0.1, "Sampling temperature 0.0–2.0")
-	f.TextVar(&thinking, "thinking", llm.ThinkingOn, "Thinking mode: auto|on|off")
-	f.TextVar(&effort, "effort", llm.EffortMedium, "Effort level: low|medium|high|max")
+	f.Float64Var(&inference.Temperature, "temperature", inference.Temperature, "Sampling temperature 0.0–2.0")
+	f.TextVar(&inference.Thinking, "thinking", inference.Thinking, "Thinking mode: auto|on|off")
+	f.TextVar(&inference.Effort, "effort", inference.Effort, "Effort level: low|medium|high|max")
 	_ = cmd.RegisterFlagCompletionFunc("model", completeModelFlag)
 	cmd.AddCommand(modelsCmd())
 	cmd.AddCommand(completionCmd(cmd))
@@ -222,13 +221,11 @@ func containsFold(s, substr string) bool {
 }
 func execute(
 	args []string,
-	model, workspace string,
-	maxSteps, maxTokens int,
+	inference InferenceConfig,
+	maxSteps int,
+	workspace string,
 	systemPrompt string,
 	timeout time.Duration,
-	thinking llm.ThinkingMode,
-	effort llm.Effort,
-	temperature float64,
 ) error {
 	// Resolve and validate workspace
 	if workspace == "" {
@@ -251,12 +248,8 @@ func execute(
 	}
 	// Build agent
 	a := agent.New(provider, workspace, timeout, systemPrompt,
-		agent.WithModel(model),
+		agent.WithInferenceOptions(inference),
 		agent.WithMaxSteps(maxSteps),
-		agent.WithMaxTokens(maxTokens),
-		agent.WithThinking(thinking),
-		agent.WithEffort(effort),
-		agent.WithTemperature(temperature),
 	)
 	// One-shot mode
 	if len(args) == 1 {

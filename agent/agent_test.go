@@ -43,6 +43,22 @@ func blockingProvider() llm.Provider {
 	)
 }
 
+func TestNewInferenceOptions_AppliesOverrides(t *testing.T) {
+	opts := NewInferenceOptions(
+		WithModel("claude-sonnet"),
+		WithMaxTokens(2048),
+		WithThinking(llm.ThinkingOff),
+		WithEffort(llm.EffortHigh),
+		WithTemperature(0.7),
+	)
+
+	assert.Equal(t, "claude-sonnet", opts.Model)
+	assert.Equal(t, 2048, opts.MaxTokens)
+	assert.Equal(t, llm.ThinkingOff, opts.Thinking)
+	assert.Equal(t, llm.EffortHigh, opts.Effort)
+	assert.Equal(t, 0.7, opts.Temperature)
+}
+
 func TestRunTurn_CompletesMultiStep(t *testing.T) {
 	// fake provider: call 1 → tool_use (bash "echo hello"), call 2 → text "done"
 	a, buf := newTestAgent(t)
