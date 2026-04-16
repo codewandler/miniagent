@@ -9,6 +9,7 @@ import (
 	"github.com/codewandler/llm/provider/auto"
 	"github.com/codewandler/miniagent/agent"
 	"github.com/spf13/cobra"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -34,6 +35,7 @@ func rootCmd() *cobra.Command {
 		workspace    string
 		systemPrompt string
 		timeout      time.Duration
+		debug        bool
 	)
 	cmd := &cobra.Command{
 		Use:   "miniagent [task]",
@@ -45,7 +47,7 @@ With a positional argument it runs the task once and exits.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(_ *cobra.Command, args []string) error {
-			return execute(args, inference, maxSteps, workspace, systemPrompt, timeout)
+			return execute(args, inference, maxSteps, workspace, systemPrompt, timeout, debug)
 		},
 	}
 	f := cmd.Flags()
@@ -55,6 +57,7 @@ With a positional argument it runs the task once and exits.`,
 	f.IntVar(&inference.MaxTokens, "max-tokens", inference.MaxTokens, "Maximum output tokens per LLM call")
 	f.StringVarP(&systemPrompt, "system", "s", "", "Override the system prompt body")
 	f.DurationVar(&timeout, "timeout", 30*time.Second, "Per-command bash timeout")
+	f.BoolVar(&debug, "debug", false, "Enable debug logging for the auto provider")
 	f.Float64Var(&inference.Temperature, "temperature", inference.Temperature, "Sampling temperature 0.0–2.0")
 	f.TextVar(&inference.Thinking, "thinking", inference.Thinking, "Thinking mode: auto|on|off")
 	f.TextVar(&inference.Effort, "effort", inference.Effort, "Effort level: low|medium|high|max")
@@ -70,7 +73,7 @@ func modelsCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			provider, err := createProvider(cmd.Context())
+			provider, err := createProvider(cmd.Context(), false)
 			if err != nil {
 				return err
 			}
@@ -192,7 +195,7 @@ func completionInstallPath(shell, override string) (string, error) {
 	}
 }
 func completeModelFlag(cmd *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	provider, err := createProvider(cmd.Context())
+	provider, err := createProvider(cmd.Context(), false)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -226,6 +229,7 @@ func execute(
 	workspace string,
 	systemPrompt string,
 	timeout time.Duration,
+	debug bool,
 ) error {
 	// Resolve and validate workspace
 	if workspace == "" {
@@ -242,7 +246,7 @@ func execute(
 	}
 	// Provider setup (mirrors cmd/llmcli)
 	ctx := context.Background()
-	provider, err := createProvider(ctx)
+	provider, err := createProvider(ctx, debug)
 	if err != nil {
 		return err
 	}
@@ -270,9 +274,12 @@ func execute(
 }
 
 // [REVIEW FIX #6]: return llm.Provider interface, not *router.Provider.
-func createProvider(ctx context.Context) (llm.Provider, error) {
+func createProvider(ctx context.Context, debug bool) (llm.Provider, error) {
 	var autoOpts []auto.Option
 	autoOpts = append(autoOpts, auto.WithName("miniagent"))
+	if debug {
+		autoOpts = append(autoOpts, auto.WithLLMOptions(llm.WithLogger(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))))
+	}
 	// Claude OAuth token store — non-fatal if unavailable
 	if dir, err := store.DefaultDir(); err == nil {
 		if ts, err := store.NewFileTokenStore(dir); err == nil {

@@ -8,8 +8,8 @@ import (
 
 // ActivationManager implements the ActivationState interface for tool management.
 type ActivationManager struct {
-	allTools   []acoreTool.Tool
-	activeSet  map[string]bool
+	allTools  []acoreTool.Tool
+	activeSet map[string]bool
 }
 
 // NewActivationManager creates a new ActivationManager with all tools initially active.
