@@ -268,7 +268,7 @@ func execute(
 			ctx, cancel = context.WithTimeout(ctx, totalTimeout)
 		}
 		defer cancel()
-		err := a.RunTurn(ctx, "1", args[0])
+		err := a.RunTurn(ctx, 1, args[0])
 		fmt.Println()
 		agent.PrintSessionUsage(os.Stdout, a.SessionID(), a.Tracker().Aggregate())
 		if errors.Is(err, agent.ErrMaxStepsReached) {

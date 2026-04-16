@@ -254,12 +254,12 @@ func printStepUsage(w io.Writer, step int, rec usage.Record, model string) {
 	fmt.Fprintf(w, "%s   ── step %d ── %s%s%s\n", ansiDim, step, parts, modelPart, ansiReset)
 }
 
-func printTurnUsage(w io.Writer, turnID string, rec usage.Record) {
+func printTurnUsage(w io.Writer, turnID int, rec usage.Record) {
 	parts := formatUsageParts(rec)
 	if parts == "" {
 		return
 	}
-	fmt.Fprintf(w, "%s   ── turn %s ── %s%s\n", ansiDim, turnID, parts, ansiReset)
+	fmt.Fprintf(w, "%s   ── turn %d ── %s%s\n", ansiDim, turnID, parts, ansiReset)
 }
 
 // PrintSessionUsage prints the session-total usage line.

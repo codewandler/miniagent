@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"strconv"
 	"context"
 	"testing"
 	"time"
@@ -60,7 +61,7 @@ func TestRunTurn_CompletesMultiStep(t *testing.T) {
 	a, buf := newTestAgent(t)
 	initialMsgs := len(a.messages) // system prompt only
 
-	err := a.RunTurn(context.Background(), "1", "say hello")
+	err := a.RunTurn(context.Background(), 1, "say hello")
 	require.NoError(t, err)
 
 	// History grew: system + user + assistant(tool) + tool_result + assistant(text) = 5
@@ -72,7 +73,7 @@ func TestRunTurn_CompletesMultiStep(t *testing.T) {
 	assert.Contains(t, out, "Step 2")
 
 	// Usage recorded with turnID
-	recs := a.Tracker().Filter(usage.ByTurnID("1"))
+	recs := a.Tracker().Filter(usage.ByTurnID(strconv.Itoa(1)))
 	assert.NotEmpty(t, recs)
 }
 
@@ -80,7 +81,7 @@ func TestRunTurn_MaxStepsReached(t *testing.T) {
 	// fake returns tool_use on first call → maxSteps=1 → loop exhausted
 	a, _ := newTestAgent(t, WithMaxSteps(1))
 
-	err := a.RunTurn(context.Background(), "1", "do something")
+	err := a.RunTurn(context.Background(), 1, "do something")
 	assert.ErrorIs(t, err, ErrMaxStepsReached)
 }
 
@@ -92,7 +93,7 @@ func TestRunTurn_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel before RunTurn
 
-	err := a.RunTurn(ctx, "1", "do something")
+	err := a.RunTurn(ctx, 1, "do something")
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
@@ -105,7 +106,7 @@ func TestRunTurn_RollbackOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_ = a.RunTurn(ctx, "1", "do something")
+	_ = a.RunTurn(ctx, 1, "do something")
 	assert.Equal(t, initialLen, len(a.messages), "messages should be rolled back")
 }
 
@@ -113,7 +114,7 @@ func TestRunTurn_NoRollbackOnMaxSteps(t *testing.T) {
 	a, _ := newTestAgent(t, WithMaxSteps(1))
 	initialLen := len(a.messages)
 
-	_ = a.RunTurn(context.Background(), "1", "do something")
+	_ = a.RunTurn(context.Background(), 1, "do something")
 	assert.Greater(t, len(a.messages), initialLen,
 		"messages should NOT be rolled back on max-steps (history is valid)")
 }
@@ -122,14 +123,14 @@ func TestRunTurn_HistoryPersistsAcrossTurns(t *testing.T) {
 	a, _ := newTestAgent(t)
 
 	// Turn 1: fake does tool_use → text (2 steps)
-	err := a.RunTurn(context.Background(), "1", "first task")
+	err := a.RunTurn(context.Background(), 1, "first task")
 	require.NoError(t, err)
 	afterTurn1 := len(a.messages)
 
 	// Turn 2: fake's called flag is true → returns text-only (1 step).
 	// Exact count: +2 messages (user + assistant). If the fake's state machine
 	// changes this will fail loudly rather than silently accepting a different structure.
-	err = a.RunTurn(context.Background(), "2", "second task")
+	err = a.RunTurn(context.Background(), 2, "second task")
 	require.NoError(t, err)
 	afterTurn2 := len(a.messages)
 
@@ -137,6 +138,6 @@ func TestRunTurn_HistoryPersistsAcrossTurns(t *testing.T) {
 		"turn 2 (text-only, 1 step) should add exactly user + assistant = 2 messages")
 
 	// Both turns have usage records
-	assert.NotEmpty(t, a.Tracker().Filter(usage.ByTurnID("1")))
-	assert.NotEmpty(t, a.Tracker().Filter(usage.ByTurnID("2")))
+	assert.NotEmpty(t, a.Tracker().Filter(usage.ByTurnID(strconv.Itoa(1))))
+	assert.NotEmpty(t, a.Tracker().Filter(usage.ByTurnID(strconv.Itoa(2))))
 }

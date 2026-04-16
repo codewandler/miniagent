@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"fmt"
 	"io"
 	"os"
@@ -225,7 +226,7 @@ var ErrMaxStepsReached = errors.New("maximum steps reached — task may be incom
 
 // RunTurn executes one REPL turn (or one-shot task). Appends a user message,
 // runs the step loop, and returns nil on success.
-func (a *Agent) RunTurn(ctx context.Context, turnID, task string) error {
+func (a *Agent) RunTurn(ctx context.Context, turnID int, task string) error {
 	// Snapshot for rollback on error (see DESIGN §History rollback)
 	snapshot := len(a.messages)
 	rollback := func() { a.messages = a.messages[:snapshot] }
@@ -269,7 +270,7 @@ func (a *Agent) RunTurn(ctx context.Context, turnID, task string) error {
 //   - (_, error):    error — caller should rollback
 func (a *Agent) runStep(
 	ctx context.Context,
-	turnID string,
+	turnID int,
 	step int,
 	stepsCompleted *int,
 ) (done bool, err error) {
@@ -336,7 +337,7 @@ func (a *Agent) runStep(
 		})).
 		OnEvent(llm.TypedEventHandler[*llm.UsageUpdatedEvent](func(ev *llm.UsageUpdatedEvent) {
 			rec := ev.Record
-			rec.Dims.TurnID = turnID
+			rec.Dims.TurnID = strconv.Itoa(turnID)
 			a.tracker.Record(rec)
 			stepUsage = rec
 		})).
@@ -420,8 +421,8 @@ func (a *Agent) createToolHandlers() []tool.NamedHandler {
 }
 
 // aggregateTurn sums all usage records for a given turn ID.
-func (a *Agent) aggregateTurn(turnID string) usage.Record {
-	recs := a.tracker.Filter(usage.ByTurnID(turnID), usage.ExcludeEstimates())
+func (a *Agent) aggregateTurn(turnID int) usage.Record {
+	recs := a.tracker.Filter(usage.ByTurnID(strconv.Itoa(turnID)), usage.ExcludeEstimates())
 	var agg usage.Record
 	counts := make(map[usage.TokenKind]int)
 	for _, r := range recs {

@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -78,7 +77,7 @@ func RunREPL(ctx context.Context, a *Agent, input io.Reader) error {
 		turnCancel = cancel
 		mu.Unlock()
 
-		err := a.RunTurn(turnCtx, strconv.Itoa(turnID), line)
+		err := a.RunTurn(turnCtx, turnID, line)
 
 		mu.Lock()
 		turnCancel = nil
