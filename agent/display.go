@@ -178,10 +178,10 @@ func (d *stepDisplay) PrintToolCall(name, command string) {
 }
 
 // renderMarkdown renders markdown text for terminal display using glamour.
-// Falls back to plain text if rendering fails.
+// Uses a fixed "dark" style for consistent colored output regardless of TTY status.
 func renderMarkdown(text string) string {
 	r, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamour.WithStandardStyle("dark"),
 		glamour.WithWordWrap(0),
 	)
 	if err != nil {

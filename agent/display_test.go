@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -172,7 +173,9 @@ func TestStepDisplay_StateTransitions(t *testing.T) {
 		sd.End()
 
 		out := buf.String()
-		assert.Contains(t, out, "hello world")
+		// Check stripped output contains the text
+		assert.Contains(t, stripANSI(out), "hello world")
+		// No dim formatting for plain text output
 		assert.NotContains(t, out, ansiDim)
 	})
 
@@ -185,8 +188,15 @@ func TestStepDisplay_StateTransitions(t *testing.T) {
 		sd.End()
 
 		out := buf.String()
-		assert.Contains(t, out, "let me check")
+		// Check stripped output contains the text
+		assert.Contains(t, stripANSI(out), "let me check")
 		assert.Contains(t, out, "🔧 bash")
 		assert.Contains(t, out, "$ ls -la")
 	})
+}
+
+// stripANSI removes ANSI escape codes from a string for test comparison.
+func stripANSI(s string) string {
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	return ansiRegex.ReplaceAllString(s, "")
 }
