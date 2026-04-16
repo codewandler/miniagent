@@ -16,9 +16,8 @@ func newREPLTestAgent(t *testing.T) (*Agent, *bytes.Buffer) {
 	var buf bytes.Buffer
 	a := New(
 		fake.NewProvider(),
-		t.TempDir(),
-		5*time.Second,
-		"",
+		WithWorkspace(t.TempDir()),
+		WithToolTimeout(5*time.Second),
 		WithOutput(&buf),
 	)
 	return a, &buf

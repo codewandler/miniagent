@@ -76,7 +76,7 @@ func TestFormatUsageParts(t *testing.T) {
 		}
 		parts := formatUsageParts(rec)
 		assert.Contains(t, parts, "input: 1.2k")
-		assert.Contains(t, parts, "cache_r: 8.4k (100%)")
+		assert.Contains(t, parts, "cache_r: 8.4k (88%)")  // 8432/(8432+1204) = 87.5%
 		assert.Contains(t, parts, "output: 87")
 		assert.Contains(t, parts, "cost: $0.0023")
 	})
@@ -95,17 +95,17 @@ func TestFormatUsageParts(t *testing.T) {
 		assert.NotContains(t, parts, "cost")
 	})
 
-	t.Run("cache hit rate 75 percent", func(t *testing.T) {
+	t.Run("cache coverage 60 percent", func(t *testing.T) {
 		rec := usage.Record{
 			Tokens: usage.TokenItems{
 				{Kind: usage.KindInput, Count: 200},
-				{Kind: usage.KindCacheRead, Count: 300}, // 300/(300+100) = 75 %
+				{Kind: usage.KindCacheRead, Count: 300}, // 300/(300+200) = 60 %
 				{Kind: usage.KindCacheWrite, Count: 100},
 				{Kind: usage.KindOutput, Count: 50},
 			},
 		}
 		parts := formatUsageParts(rec)
-		assert.Contains(t, parts, "cache_r: 300 (75%)")
+		assert.Contains(t, parts, "cache_r: 300 (60%)")
 		assert.Contains(t, parts, "cache_w: 100")
 		// hit rate annotation must NOT appear on cache_w
 		assert.NotContains(t, parts, "cache_w: 100 (")

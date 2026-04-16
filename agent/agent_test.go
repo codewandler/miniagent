@@ -18,13 +18,9 @@ import (
 func newTestAgent(t *testing.T, opts ...Option) (*Agent, *bytes.Buffer) {
 	t.Helper()
 	var buf bytes.Buffer
-	all := append([]Option{WithOutput(&buf)}, opts...)
 	return New(
 		fake.NewProvider(),
-		t.TempDir(),
-		5*time.Second,
-		"", // default system prompt
-		all...,
+		append([]Option{WithWorkspace(t.TempDir()), WithToolTimeout(5*time.Second), WithOutput(&buf)}, opts...)...,
 	), &buf
 }
 
@@ -91,7 +87,7 @@ func TestRunTurn_MaxStepsReached(t *testing.T) {
 // [REVIEW FIX #1]: use blocking provider — no buffered events → deterministic cancel.
 func TestRunTurn_CancelledContext(t *testing.T) {
 	var buf bytes.Buffer
-	a := New(blockingProvider(), t.TempDir(), 5*time.Second, "", WithOutput(&buf))
+	a := New(blockingProvider(), WithWorkspace(t.TempDir()), WithToolTimeout(5*time.Second), WithOutput(&buf))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel before RunTurn
@@ -103,7 +99,7 @@ func TestRunTurn_CancelledContext(t *testing.T) {
 // [REVIEW FIX #1]: use blocking provider for deterministic rollback test.
 func TestRunTurn_RollbackOnCancel(t *testing.T) {
 	var buf bytes.Buffer
-	a := New(blockingProvider(), t.TempDir(), 5*time.Second, "", WithOutput(&buf))
+	a := New(blockingProvider(), WithWorkspace(t.TempDir()), WithToolTimeout(5*time.Second), WithOutput(&buf))
 	initialLen := len(a.messages)
 
 	ctx, cancel := context.WithCancel(context.Background())

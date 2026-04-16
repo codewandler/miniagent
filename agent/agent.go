@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/codewandler/agentcore/interfaces"
@@ -35,6 +36,8 @@ type Agent struct {
 	maxSteps        int
 	out             io.Writer
 	workspace       string
+	toolTimeout     time.Duration
+	systemOverride  string
 }
 
 // Option configures the Agent.
@@ -108,33 +111,44 @@ func WithMaxSteps(n int) Option { return func(a *Agent) { a.maxSteps = n } }
 // WithOutput sets the output writer (default: os.Stdout).
 // Tests pass a *bytes.Buffer to capture and suppress output.
 func WithOutput(w io.Writer) Option { return func(a *Agent) { a.out = w } }
+// WithWorkspace sets the working directory (default: current working directory).
+func WithWorkspace(dir string) Option { return func(a *Agent) { a.workspace = dir } }
 
-// New creates an Agent. workspace must be an absolute path to an existing
-// directory. cmdTimeout limits each individual bash command.
-func New(
-	provider llm.Provider,
-	workspace string,
-	cmdTimeout time.Duration,
-	systemOverride string,
-	opts ...Option,
-) *Agent {
+// WithToolTimeout sets the per-tool call timeout (default: 30s).
+func WithToolTimeout(d time.Duration) Option { return func(a *Agent) { a.toolTimeout = d } }
+
+// WithSystemOverride sets a custom system prompt body (default: built from workspace).
+func WithSystemOverride(prompt string) Option { return func(a *Agent) { a.systemOverride = prompt } }
+
+
+// New creates an Agent. All settings are configurable via Options.
+// Defaults: workspace = cwd, toolTimeout = 30s, maxSteps = 30.
+func New(provider llm.Provider, opts ...Option) *Agent {
 	a := &Agent{
-		provider:  provider,
-		inference: DefaultInferenceOptions(),
-		maxSteps:  30,
-		out:       os.Stdout,
-		workspace: workspace,
+		provider:     provider,
+		inference:    DefaultInferenceOptions(),
+		maxSteps:     30,
+		out:          os.Stdout,
+		toolTimeout: 30 * time.Second,
 	}
 	for _, o := range opts {
 		o(a)
 	}
+
+	// Resolve workspace to absolute path
+	ws := a.workspace
+	if ws == "" {
+		ws, _ = os.Getwd()
+	}
+	ws, _ = filepath.Abs(ws)
+	a.workspace = ws
 
 	a.tracker = usage.NewTracker(
 		usage.WithCostCalculator(usage.Default()),
 	)
 
 	// System prompt with cache hint for REPL efficiency
-	prompt := BuildSystemPrompt(workspace, systemOverride)
+	prompt := BuildSystemPrompt(ws, a.systemOverride)
 	initMsg := msg.Messages{
 		msg.System(prompt).Cache(msg.CacheTTL1h).Build(),
 	}
@@ -142,13 +156,13 @@ func New(
 	a.messages = initMsg
 
 	// Build agentcore tools
-	a.setupTools(workspace, cmdTimeout)
+	a.setupTools(a.workspace, a.toolTimeout)
 
 	return a
 }
 
 // setupTools initializes all tools from agentcore packages
-func (a *Agent) setupTools(workspace string, cmdTimeout time.Duration) {
+func (a *Agent) setupTools(workspace string, toolTimeout time.Duration) {
 	// Collect all tools
 	var allTools []acoreTool.Tool
 

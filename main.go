@@ -34,7 +34,8 @@ func rootCmd() *cobra.Command {
 		maxSteps                     = 30
 		workspace    string
 		systemPrompt string
-		timeout      time.Duration
+		totalTimeout time.Duration
+		toolTimeout  time.Duration
 		debug        bool
 	)
 	cmd := &cobra.Command{
@@ -47,7 +48,7 @@ With a positional argument it runs the task once and exits.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(_ *cobra.Command, args []string) error {
-			return execute(args, inference, maxSteps, workspace, systemPrompt, timeout, debug)
+			return execute(args, inference, maxSteps, workspace, systemPrompt, totalTimeout, toolTimeout, debug)
 		},
 	}
 	f := cmd.Flags()
@@ -56,7 +57,8 @@ With a positional argument it runs the task once and exits.`,
 	f.IntVar(&maxSteps, "max-steps", maxSteps, "Maximum agent loop iterations per turn")
 	f.IntVar(&inference.MaxTokens, "max-tokens", inference.MaxTokens, "Maximum output tokens per LLM call")
 	f.StringVarP(&systemPrompt, "system", "s", "", "Override the system prompt body")
-	f.DurationVar(&timeout, "timeout", 30*time.Second, "Per-command bash timeout")
+	f.DurationVar(&totalTimeout, "timeout", 0, "Total runtime timeout (0 = no limit)")
+	f.DurationVar(&toolTimeout, "tool-timeout", 30*time.Second, "Per-tool call timeout")
 	f.BoolVar(&debug, "debug", false, "Enable debug logging for the auto provider")
 	f.Float64Var(&inference.Temperature, "temperature", inference.Temperature, "Sampling temperature 0.0–2.0")
 	f.TextVar(&inference.Thinking, "thinking", inference.Thinking, "Thinking mode: auto|on|off")
@@ -228,7 +230,8 @@ func execute(
 	maxSteps int,
 	workspace string,
 	systemPrompt string,
-	timeout time.Duration,
+	totalTimeout time.Duration,
+	toolTimeout time.Duration,
 	debug bool,
 ) error {
 	// Resolve and validate workspace
@@ -251,13 +254,19 @@ func execute(
 		return err
 	}
 	// Build agent
-	a := agent.New(provider, workspace, timeout, systemPrompt,
+	a := agent.New(provider,
+		agent.WithWorkspace(workspace),
+		agent.WithToolTimeout(toolTimeout),
+		agent.WithSystemOverride(systemPrompt),
 		agent.WithInferenceOptions(inference),
 		agent.WithMaxSteps(maxSteps),
 	)
 	// One-shot mode
 	if len(args) == 1 {
 		ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
+		if totalTimeout > 0 {
+			ctx, cancel = context.WithTimeout(ctx, totalTimeout)
+		}
 		defer cancel()
 		err := a.RunTurn(ctx, "1", args[0])
 		fmt.Println()

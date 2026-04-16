@@ -86,12 +86,12 @@ func formatUsageParts(rec usage.Record) string {
 			continue
 		}
 		s := fmt.Sprintf("%s: %s", kl.label, compactCount(count))
-		// Annotate cache_r with the hit rate: reads / (reads + writes).
-		// 100 % means the cache was fully warm; 0 % would mean no cache_r at all
-		// (which cannot happen here since count > 0 for KindCacheRead).
+	// Annotate cache_r with the percentage of input tokens served from cache:
+		// cache_read / (cache_read + input). This shows how many of the tokens sent
+		// to the model this call were already cached vs had to be transmitted.
 		if kl.kind == usage.KindCacheRead {
-			cacheWrite := rec.Tokens.Count(usage.KindCacheWrite)
-			hitRate := float64(count) * 100.0 / float64(count+cacheWrite)
+			inputTokens := rec.Tokens.Count(usage.KindInput)
+			hitRate := float64(count) * 100.0 / float64(count+inputTokens)
 			s += fmt.Sprintf(" (%.0f%%)", hitRate)
 		}
 		parts = append(parts, s)
