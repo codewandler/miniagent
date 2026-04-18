@@ -93,7 +93,7 @@ func formatUsageParts(rec usage.Record) string {
 			var cacheParts []string
 			if cacheRead > 0 {
 				hitRate := float64(cacheRead) * 100.0 / float64(totalIn)
-				cacheParts = append(cacheParts, fmt.Sprintf("cache_r: %s %.0f%%", compactCount(cacheRead), hitRate))
+				cacheParts = append(cacheParts, fmt.Sprintf("cache_r: %s %.1f%%", compactCount(cacheRead), hitRate))
 			}
 			if cacheWrite > 0 {
 				cacheParts = append(cacheParts, fmt.Sprintf("cache_w: %s", compactCount(cacheWrite)))

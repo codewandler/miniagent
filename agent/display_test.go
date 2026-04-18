@@ -77,7 +77,7 @@ func TestFormatUsageParts(t *testing.T) {
 		parts := formatUsageParts(rec)
 		// total input = 1204 + 8432 = 9636
 		assert.Contains(t, parts, "in: 9.6k")
-		assert.Contains(t, parts, "cache_r: 8.4k 88%") // 8432/9636 = 87.5%
+		assert.Contains(t, parts, "cache_r: 8.4k 87.5%") // 8432/9636 = 87.5%
 		assert.Contains(t, parts, "new: 1.2k")
 		assert.Contains(t, parts, "out: 87")
 		assert.Contains(t, parts, "cost: $0.0023")
@@ -109,7 +109,7 @@ func TestFormatUsageParts(t *testing.T) {
 		parts := formatUsageParts(rec)
 		// total = 200+300+100 = 600
 		assert.Contains(t, parts, "in: 600")
-		assert.Contains(t, parts, "cache_r: 300 50%")
+		assert.Contains(t, parts, "cache_r: 300 50.0%")
 		assert.Contains(t, parts, "cache_w: 100")
 		assert.Contains(t, parts, "new: 200")
 	})
