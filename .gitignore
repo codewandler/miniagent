@@ -15,6 +15,7 @@ evolve/cycles.jsonl
 
 .task
 .idea
+*.iml
 
 # Built binary
 miniagent
