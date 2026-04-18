@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"regexp"
 	"strings"
 	"testing"
 
@@ -67,12 +66,8 @@ func TestTruncateDisplay(t *testing.T) {
 func TestFormatUsageParts(t *testing.T) {
 	t.Run("all fields with cache", func(t *testing.T) {
 		rec := usage.Record{
-			Tokens: usage.TokenItems{
-				{Kind: usage.KindInput, Count: 1204},
-				{Kind: usage.KindCacheRead, Count: 8432},
-				{Kind: usage.KindOutput, Count: 87},
-			},
-			Cost: usage.Cost{Total: 0.0023},
+			Tokens: usage.TokenItems{{Kind: usage.KindInput, Count: 1204}, {Kind: usage.KindCacheRead, Count: 8432}, {Kind: usage.KindOutput, Count: 87}},
+			Cost:   usage.Cost{Total: 0.0023},
 		}
 		parts := formatUsageParts(rec)
 		assert.Contains(t, parts, "in: 9.6k")
@@ -83,12 +78,7 @@ func TestFormatUsageParts(t *testing.T) {
 	})
 
 	t.Run("no cache plain input output", func(t *testing.T) {
-		rec := usage.Record{
-			Tokens: usage.TokenItems{
-				{Kind: usage.KindInput, Count: 100},
-				{Kind: usage.KindOutput, Count: 50},
-			},
-		}
+		rec := usage.Record{Tokens: usage.TokenItems{{Kind: usage.KindInput, Count: 100}, {Kind: usage.KindOutput, Count: 50}}}
 		parts := formatUsageParts(rec)
 		assert.Contains(t, parts, "in: 100")
 		assert.Contains(t, parts, "out: 50")
@@ -97,14 +87,7 @@ func TestFormatUsageParts(t *testing.T) {
 	})
 
 	t.Run("cache read and write with non-cache input", func(t *testing.T) {
-		rec := usage.Record{
-			Tokens: usage.TokenItems{
-				{Kind: usage.KindInput, Count: 200},
-				{Kind: usage.KindCacheRead, Count: 300},
-				{Kind: usage.KindCacheWrite, Count: 100},
-				{Kind: usage.KindOutput, Count: 50},
-			},
-		}
+		rec := usage.Record{Tokens: usage.TokenItems{{Kind: usage.KindInput, Count: 200}, {Kind: usage.KindCacheRead, Count: 300}, {Kind: usage.KindCacheWrite, Count: 100}, {Kind: usage.KindOutput, Count: 50}}}
 		parts := formatUsageParts(rec)
 		assert.Contains(t, parts, "in: 600")
 		assert.Contains(t, parts, "cache_r: 300 50.0%")
@@ -113,13 +96,7 @@ func TestFormatUsageParts(t *testing.T) {
 	})
 
 	t.Run("cache write only cold start", func(t *testing.T) {
-		rec := usage.Record{
-			Tokens: usage.TokenItems{
-				{Kind: usage.KindInput, Count: 500},
-				{Kind: usage.KindCacheWrite, Count: 400},
-				{Kind: usage.KindOutput, Count: 60},
-			},
-		}
+		rec := usage.Record{Tokens: usage.TokenItems{{Kind: usage.KindInput, Count: 500}, {Kind: usage.KindCacheWrite, Count: 400}, {Kind: usage.KindOutput, Count: 60}}}
 		parts := formatUsageParts(rec)
 		assert.Contains(t, parts, "in: 900")
 		assert.Contains(t, parts, "cache_w: 400")
@@ -153,15 +130,17 @@ func TestExtractBashOutput(t *testing.T) {
 
 func TestRenderMarkdown_UsesExplicitStyle(t *testing.T) {
 	out := renderMarkdown("# Title\n\n- item\n")
-	assert.Contains(t, stripANSI(out), "Title")
-	assert.Contains(t, stripANSI(out), "item")
+	assert.Contains(t, out, "Title")
+	assert.Contains(t, out, "item")
 	assert.NotEqual(t, "# Title\n\n- item\n", out)
 }
 
 func TestStepDisplay_StateTransitions(t *testing.T) {
+	plain := func(s string) string { return s }
+
 	t.Run("reasoning then text", func(t *testing.T) {
 		var buf strings.Builder
-		sd := newStepDisplay(&buf)
+		sd := newStepDisplayWithRenderer(&buf, plain)
 
 		sd.WriteReasoning("thinking...")
 		sd.WriteText("answer")
@@ -169,58 +148,52 @@ func TestStepDisplay_StateTransitions(t *testing.T) {
 
 		out := buf.String()
 		assert.Contains(t, out, "thinking...")
-		assert.Contains(t, stripANSI(out), "answer")
+		assert.Contains(t, out, "answer")
 		assert.Contains(t, out, ansiDim)
 		assert.Contains(t, out, ansiReset)
 	})
 
 	t.Run("text only paragraph waits until stable boundary", func(t *testing.T) {
 		var buf strings.Builder
-		sd := newStepDisplay(&buf)
+		sd := newStepDisplayWithRenderer(&buf, plain)
 
 		sd.WriteText("hello ")
-		assert.NotContains(t, stripANSI(buf.String()), "hello")
+		assert.NotContains(t, buf.String(), "hello")
 		sd.WriteText("world\n\n")
 		sd.End()
 
 		out := buf.String()
-		assert.Contains(t, stripANSI(out), "hello world")
+		assert.Contains(t, out, "hello world")
 		assert.NotContains(t, out, ansiDim)
 	})
 
 	t.Run("fenced code is withheld until closed", func(t *testing.T) {
 		var buf strings.Builder
-		sd := newStepDisplay(&buf)
+		sd := newStepDisplayWithRenderer(&buf, plain)
 
 		sd.WriteText("Before\n\n```go\nfmt.Println(1)\n")
-		stripped := stripANSI(buf.String())
-		assert.Contains(t, stripped, "Before")
-		assert.NotContains(t, stripped, "fmt.Println(1)")
+		out := buf.String()
+		assert.Contains(t, out, "Before")
+		assert.NotContains(t, out, "fmt.Println(1)")
 
 		sd.WriteText("```\n")
 		sd.End()
-		stripped = stripANSI(buf.String())
-		assert.Contains(t, stripped, "fmt.Println(1)")
+		out = buf.String()
+		assert.Contains(t, out, "fmt.Println(1)")
 	})
 
 	t.Run("tool call flushes pending markdown", func(t *testing.T) {
 		var buf strings.Builder
-		sd := newStepDisplay(&buf)
+		sd := newStepDisplayWithRenderer(&buf, plain)
 
 		sd.WriteText("let me check")
 		sd.PrintToolCall("bash", map[string]any{"command": "ls -la"})
 		sd.End()
 
 		out := buf.String()
-		assert.Contains(t, stripANSI(out), "let me check")
+		assert.Contains(t, out, "let me check")
 		assert.Contains(t, out, "🔧 bash")
 		assert.Contains(t, out, `"command"`)
 		assert.Contains(t, out, `"ls -la"`)
 	})
-}
-
-// stripANSI removes ANSI escape codes from a string for test comparison.
-func stripANSI(s string) string {
-	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-	return ansiRegex.ReplaceAllString(s, "")
 }

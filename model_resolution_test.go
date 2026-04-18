@@ -8,18 +8,13 @@ import (
 )
 
 // MockProvider implements llm.Provider for testing
+// resolveModel only needs ModelsProvider; CreateStream is unused.
 type MockProvider struct {
 	models llm.Models
 }
 
-func (m *MockProvider) Name() string {
-	return "mock"
-}
-
-func (m *MockProvider) Models() llm.Models {
-	return m.models
-}
-
+func (m *MockProvider) Name() string       { return "mock" }
+func (m *MockProvider) Models() llm.Models { return m.models }
 func (m *MockProvider) CreateStream(ctx context.Context, req llm.Buildable) (llm.Stream, error) {
 	return nil, nil
 }
@@ -27,22 +22,22 @@ func (m *MockProvider) CreateStream(ctx context.Context, req llm.Buildable) (llm
 func TestResolveModel(t *testing.T) {
 	mockModels := llm.Models{
 		{
-			ID:       "claude-opus-4-5-20250514",
-			Name:     "Claude Opus 4.5 (2025-05-14)",
-			Provider: "anthropic",
-			Aliases:  []string{"opus", "default"},
+			ID:       "codex/gpt-5.4",
+			Name:     "GPT-5.4",
+			Provider: "codex",
+			Aliases:  []string{"codex", "default"},
+		},
+		{
+			ID:       "codex/gpt-5.4-mini",
+			Name:     "GPT-5.4 Mini",
+			Provider: "codex",
+			Aliases:  []string{"mini"},
 		},
 		{
 			ID:       "claude-sonnet-4-20250514",
 			Name:     "Claude Sonnet 4 (2025-05-14)",
 			Provider: "anthropic",
 			Aliases:  []string{"sonnet"},
-		},
-		{
-			ID:       "claude-haiku-4-5-20251001",
-			Name:     "Claude Haiku 4.5 (2025-10-01)",
-			Provider: "anthropic",
-			Aliases:  []string{"haiku"},
 		},
 	}
 
@@ -55,43 +50,13 @@ func TestResolveModel(t *testing.T) {
 		expectError   bool
 		errorContains string
 	}{
-		{
-			name:       "exact ID match",
-			modelStr:   "claude-opus-4-5-20250514",
-			expectedID: "claude-opus-4-5-20250514",
-		},
-		{
-			name:       "alias match - opus",
-			modelStr:   "opus",
-			expectedID: "claude-opus-4-5-20250514",
-		},
-		{
-			name:       "alias match - default",
-			modelStr:   "default",
-			expectedID: "claude-opus-4-5-20250514",
-		},
-		{
-			name:       "alias match - sonnet",
-			modelStr:   "sonnet",
-			expectedID: "claude-sonnet-4-20250514",
-		},
-		{
-			name:       "alias match - haiku",
-			modelStr:   "haiku",
-			expectedID: "claude-haiku-4-5-20251001",
-		},
-		{
-			name:          "unknown model",
-			modelStr:      "unknown-model",
-			expectError:   true,
-			errorContains: "unknown model",
-		},
-		{
-			name:          "empty string",
-			modelStr:      "",
-			expectError:   true,
-			errorContains: "cannot be empty",
-		},
+		{name: "exact ID match", modelStr: "codex/gpt-5.4", expectedID: "codex/gpt-5.4"},
+		{name: "alias match - codex", modelStr: "codex", expectedID: "codex/gpt-5.4"},
+		{name: "alias match - default", modelStr: "default", expectedID: "codex/gpt-5.4"},
+		{name: "alias match - mini", modelStr: "mini", expectedID: "codex/gpt-5.4-mini"},
+		{name: "alias match - sonnet", modelStr: "sonnet", expectedID: "claude-sonnet-4-20250514"},
+		{name: "unknown model", modelStr: "unknown-model", expectError: true, errorContains: "unknown model"},
+		{name: "empty string", modelStr: "", expectError: true, errorContains: "cannot be empty"},
 	}
 
 	for _, tt := range tests {
@@ -101,10 +66,8 @@ func TestResolveModel(t *testing.T) {
 				if err == nil {
 					t.Errorf("expected error but got nil")
 				}
-				if tt.errorContains != "" && err != nil {
-					if err.Error() == "" || !contains(err.Error(), tt.errorContains) {
-						t.Errorf("error message %q does not contain %q", err.Error(), tt.errorContains)
-					}
+				if tt.errorContains != "" && err != nil && !contains(err.Error(), tt.errorContains) {
+					t.Errorf("error message %q does not contain %q", err.Error(), tt.errorContains)
 				}
 			} else {
 				if err != nil {

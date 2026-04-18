@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	acoremd "github.com/codewandler/agentcore/markdown"
 	"github.com/charmbracelet/glamour"
+	acoremd "github.com/codewandler/agentcore/markdown"
 	"github.com/codewandler/llm/usage"
 )
 
@@ -153,13 +153,21 @@ const (
 )
 
 type stepDisplay struct {
-	w        io.Writer
-	state    displayState
-	mdBuffer *acoremd.Buffer
+	w              io.Writer
+	state          displayState
+	mdBuffer       *acoremd.Buffer
+	markdownRender func(string) string
 }
 
 func newStepDisplay(w io.Writer) *stepDisplay {
-	d := &stepDisplay{w: w, state: stateIdle}
+	return newStepDisplayWithRenderer(w, renderMarkdown)
+}
+
+func newStepDisplayWithRenderer(w io.Writer, renderer func(string) string) *stepDisplay {
+	if renderer == nil {
+		renderer = func(s string) string { return s }
+	}
+	d := &stepDisplay{w: w, state: stateIdle, markdownRender: renderer}
 	d.mdBuffer = acoremd.NewBuffer(func(blocks []acoremd.Block) {
 		for _, block := range blocks {
 			d.writeRenderedMarkdown(block.Markdown)
@@ -208,7 +216,7 @@ func (d *stepDisplay) PrintToolCall(name string, args map[string]any) {
 }
 
 func (d *stepDisplay) writeRenderedMarkdown(md string) {
-	fmt.Fprint(d.w, renderMarkdown(md))
+	fmt.Fprint(d.w, d.markdownRender(md))
 }
 
 // renderMarkdown renders markdown text for terminal display using glamour.

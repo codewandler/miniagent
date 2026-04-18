@@ -2,8 +2,8 @@ package agent
 
 import (
 	"bytes"
-	"strconv"
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -21,7 +21,7 @@ func newTestAgent(t *testing.T, opts ...Option) (*Agent, *bytes.Buffer) {
 	var buf bytes.Buffer
 	return New(
 		fake.NewProvider(),
-		append([]Option{WithWorkspace(t.TempDir()), WithToolTimeout(5*time.Second), WithOutput(&buf)}, opts...)...,
+		append([]Option{WithWorkspace(t.TempDir()), WithToolTimeout(5 * time.Second), WithOutput(&buf)}, opts...)...,
 	), &buf
 }
 
@@ -29,8 +29,10 @@ func newTestAgent(t *testing.T, opts ...Option) (*Agent, *bytes.Buffer) {
 // doProcess can only exit via ctx.Done() → deterministic cancel test.
 type blockingProviderImpl struct{}
 
-func (blockingProviderImpl) Name() string       { return "blocking" }
-func (blockingProviderImpl) Models() llm.Models { return llm.Models{{ID: "blocking/default", Name: "blocking", Provider: "blocking", Aliases: []string{llm.ModelDefault}}} }
+func (blockingProviderImpl) Name() string { return "blocking" }
+func (blockingProviderImpl) Models() llm.Models {
+	return llm.Models{{ID: "blocking/default", Name: "blocking", Provider: "blocking", Aliases: []string{llm.ModelDefault}}}
+}
 func (blockingProviderImpl) CreateStream(ctx context.Context, _ llm.Buildable) (llm.Stream, error) {
 	ch := make(chan llm.Envelope)
 	go func() {
@@ -106,7 +108,10 @@ func TestRunTurn_RollbackOnCancel(t *testing.T) {
 	initialLen := len(a.messages)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	go func() {
+		time.Sleep(5 * time.Millisecond)
+		cancel()
+	}()
 
 	_ = a.RunTurn(ctx, 1, "do something")
 	assert.Equal(t, initialLen, len(a.messages), "messages should be rolled back")

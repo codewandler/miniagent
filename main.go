@@ -342,23 +342,29 @@ Or authenticate with Claude:
 func aggregateKnownModels() llm.Models {
 	seen := map[string]bool{}
 	var out llm.Models
-	appendModels := func(models llm.Models) {
+	appendModels := func(providerName string, models llm.Models, prefixIDs bool) {
 		for _, m := range models {
-			if m.ID == "" || seen[m.ID] {
+			if m.ID == "" {
+				continue
+			}
+			if prefixIDs {
+				m.ID = providerName + "/" + m.ID
+			}
+			if seen[m.ID] {
 				continue
 			}
 			seen[m.ID] = true
 			out = append(out, m)
 		}
 	}
-	appendModels(anthropic.New().Models())
-	appendModels(openai.New().Models())
-	appendModels(openrouter.New().Models())
-	appendModels(bedrock.New().Models())
-	appendModels(ollama.New().Models())
-	appendModels(claude.New().Models())
+	appendModels("anthropic", anthropic.New().Models(), false)
+	appendModels("openai", openai.New().Models(), false)
+	appendModels("openrouter", openrouter.New().Models(), false)
+	appendModels("bedrock", bedrock.New().Models(), false)
+	appendModels("ollama", ollama.New().Models(), false)
+	appendModels("claude", claude.New().Models(), false)
 	if auth, err := codex.LoadAuth(); err == nil {
-		appendModels(codex.New(auth).Models())
+		appendModels("codex", codex.New(auth).Models(), true)
 	}
 	return out
 }

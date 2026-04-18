@@ -58,10 +58,10 @@ func TestRunREPL_ShowsParamsBeforePrompt(t *testing.T) {
 	assert.NoError(t, err)
 
 	out := buf.String()
-	assert.Contains(t, out, "model: default")
+	assert.Contains(t, out, "model: codex/gpt-5.4")
 	assert.Contains(t, out, "thinking: on")
 	assert.Contains(t, out, "effort: medium")
-	assert.Less(t, strings.Index(out, "model: default"), strings.Index(out, "miniagent> "))
+	assert.Less(t, strings.Index(out, "model: codex/gpt-5.4"), strings.Index(out, "miniagent> "))
 }
 
 func TestRunREPL_ExecutesThenExits(t *testing.T) {

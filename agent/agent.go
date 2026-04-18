@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strconv"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/codewandler/agentcore/interfaces"
@@ -61,7 +61,7 @@ type InferenceOptions struct {
 // DefaultInferenceOptions returns the default inference settings.
 func DefaultInferenceOptions() InferenceOptions {
 	return InferenceOptions{
-		Model:       "default",
+		Model:       "codex/gpt-5.4",
 		MaxTokens:   16_000,
 		Thinking:    llm.ThinkingOn,
 		Effort:      llm.EffortMedium,
@@ -114,6 +114,7 @@ func WithMaxSteps(n int) Option { return func(a *Agent) { a.maxSteps = n } }
 // WithOutput sets the output writer (default: os.Stdout).
 // Tests pass a *bytes.Buffer to capture and suppress output.
 func WithOutput(w io.Writer) Option { return func(a *Agent) { a.out = w } }
+
 // WithWorkspace sets the working directory (default: current working directory).
 func WithWorkspace(dir string) Option { return func(a *Agent) { a.workspace = dir } }
 
@@ -123,18 +124,17 @@ func WithToolTimeout(d time.Duration) Option { return func(a *Agent) { a.toolTim
 // WithSystemOverride sets a custom system prompt body (default: built from workspace).
 func WithSystemOverride(prompt string) Option { return func(a *Agent) { a.systemOverride = prompt } }
 
-
 // New creates an Agent. All settings are configurable via Options.
 // Defaults: workspace = cwd, toolTimeout = 30s, maxSteps = 30.
 func New(provider llm.Provider, opts ...Option) *Agent {
 	sessionID, _ := nanoid.Generate("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", 8)
 	a := &Agent{
-		provider:     provider,
-		inference:    DefaultInferenceOptions(),
-		maxSteps:     30,
-		out:          os.Stdout,
+		provider:    provider,
+		inference:   DefaultInferenceOptions(),
+		maxSteps:    30,
+		out:         os.Stdout,
 		toolTimeout: 30 * time.Second,
-		sessionID:    sessionID,
+		sessionID:   sessionID,
 	}
 	for _, o := range opts {
 		o(a)
