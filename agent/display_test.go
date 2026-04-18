@@ -75,9 +75,8 @@ func TestFormatUsageParts(t *testing.T) {
 			Cost: usage.Cost{Total: 0.0023},
 		}
 		parts := formatUsageParts(rec)
-		// total input = 1204 + 8432 = 9636
 		assert.Contains(t, parts, "in: 9.6k")
-		assert.Contains(t, parts, "cache_r: 8.4k 87.5%") // 8432/9636 = 87.5%
+		assert.Contains(t, parts, "cache_r: 8.4k 87.5%")
 		assert.Contains(t, parts, "new: 1.2k")
 		assert.Contains(t, parts, "out: 87")
 		assert.Contains(t, parts, "cost: $0.0023")
@@ -101,13 +100,12 @@ func TestFormatUsageParts(t *testing.T) {
 		rec := usage.Record{
 			Tokens: usage.TokenItems{
 				{Kind: usage.KindInput, Count: 200},
-				{Kind: usage.KindCacheRead, Count: 300}, // 300/600 = 50%
+				{Kind: usage.KindCacheRead, Count: 300},
 				{Kind: usage.KindCacheWrite, Count: 100},
 				{Kind: usage.KindOutput, Count: 50},
 			},
 		}
 		parts := formatUsageParts(rec)
-		// total = 200+300+100 = 600
 		assert.Contains(t, parts, "in: 600")
 		assert.Contains(t, parts, "cache_r: 300 50.0%")
 		assert.Contains(t, parts, "cache_w: 100")
@@ -123,18 +121,17 @@ func TestFormatUsageParts(t *testing.T) {
 			},
 		}
 		parts := formatUsageParts(rec)
-		// total = 500+400 = 900
 		assert.Contains(t, parts, "in: 900")
 		assert.Contains(t, parts, "cache_w: 400")
 		assert.Contains(t, parts, "new: 500")
-		// No cache reads → no hit-rate annotation
 		assert.NotContains(t, parts, "cache_r")
 	})
 
-	t.Run("empty record", func(t *testing.T) {
-		assert.Equal(t, "", formatUsageParts(usage.Record{}))
-	})
+		 t.Run("empty record", func(t *testing.T) {
+			assert.Equal(t, "", formatUsageParts(usage.Record{}))
+		})
 }
+
 func TestExtractBashOutput(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -154,6 +151,13 @@ func TestExtractBashOutput(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdown_UsesExplicitStyle(t *testing.T) {
+	out := renderMarkdown("# Title\n\n- item\n")
+	assert.Contains(t, stripANSI(out), "Title")
+	assert.Contains(t, stripANSI(out), "item")
+	assert.NotEqual(t, "# Title\n\n- item\n", out)
+}
+
 func TestStepDisplay_StateTransitions(t *testing.T) {
 	t.Run("reasoning then text", func(t *testing.T) {
 		var buf strings.Builder
@@ -165,27 +169,41 @@ func TestStepDisplay_StateTransitions(t *testing.T) {
 
 		out := buf.String()
 		assert.Contains(t, out, "thinking...")
-		assert.Contains(t, out, "answer")
+		assert.Contains(t, stripANSI(out), "answer")
 		assert.Contains(t, out, ansiDim)
 		assert.Contains(t, out, ansiReset)
 	})
 
-	t.Run("text only", func(t *testing.T) {
+	t.Run("text only paragraph waits until stable boundary", func(t *testing.T) {
 		var buf strings.Builder
 		sd := newStepDisplay(&buf)
 
 		sd.WriteText("hello ")
-		sd.WriteText("world")
+		assert.NotContains(t, stripANSI(buf.String()), "hello")
+		sd.WriteText("world\n\n")
 		sd.End()
 
 		out := buf.String()
-		// Check stripped output contains the text
 		assert.Contains(t, stripANSI(out), "hello world")
-		// No dim formatting for plain text output
 		assert.NotContains(t, out, ansiDim)
 	})
 
-	t.Run("tool call resets state", func(t *testing.T) {
+	t.Run("fenced code is withheld until closed", func(t *testing.T) {
+		var buf strings.Builder
+		sd := newStepDisplay(&buf)
+
+		sd.WriteText("Before\n\n```go\nfmt.Println(1)\n")
+		stripped := stripANSI(buf.String())
+		assert.Contains(t, stripped, "Before")
+		assert.NotContains(t, stripped, "fmt.Println(1)")
+
+		sd.WriteText("```\n")
+		sd.End()
+		stripped = stripANSI(buf.String())
+		assert.Contains(t, stripped, "fmt.Println(1)")
+	})
+
+	t.Run("tool call flushes pending markdown", func(t *testing.T) {
 		var buf strings.Builder
 		sd := newStepDisplay(&buf)
 
@@ -194,7 +212,6 @@ func TestStepDisplay_StateTransitions(t *testing.T) {
 		sd.End()
 
 		out := buf.String()
-		// Check stripped output contains the text
 		assert.Contains(t, stripANSI(out), "let me check")
 		assert.Contains(t, out, "🔧 bash")
 		assert.Contains(t, out, `"command"`)

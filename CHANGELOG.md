@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.2.0 — 2026-04-18
+
+Added stable streaming markdown rendering for assistant output.
+
+### Added
+- Reintroduced terminal markdown rendering via 
+- Integrated  into the step display pipeline
+- Incremental rendering of stable markdown blocks during assistant streaming
+- Explicit regression tests for markdown rendering, fenced-code buffering, and tool-call flushing
+
+### Changed
+- Assistant text is no longer printed raw token-by-token; it is buffered into stable markdown blocks first
+- Markdown rendering uses  to avoid the old auto-style failure mode
+- Updated agent tests to use a local blocking provider compatible with the current llm API
+
+### Fixed
+- Restored markdown rendering without depending on interactive TTY auto-detection
+- Ensured fenced code is not rendered until its closing fence is seen
+- Ensured pending markdown is flushed before tool call output and at stream end
+
 ## v0.1.0 — 2026-04-16
 
 First tagged release of the standalone CLI. This release turns miniagent into a Cobra-based command tree, adds `completion` and `completion install` commands for bash/zsh/fish, and wires model flag completion for `--model` / `-m`.

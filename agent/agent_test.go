@@ -27,18 +27,20 @@ func newTestAgent(t *testing.T, opts ...Option) (*Agent, *bytes.Buffer) {
 
 // blockingProvider creates a provider whose stream never sends events.
 // doProcess can only exit via ctx.Done() → deterministic cancel test.
-// Uses llm.NewProvider + StreamFunc: baseProvider.CreateStream just
-// delegates to the streamer without model resolution, so this is safe.
-func blockingProvider() llm.Provider {
-	return llm.NewProvider("blocking",
-		llm.WithStreamer(llm.StreamFunc(
-			func(_ context.Context, _ llm.Buildable) (llm.Stream, error) {
-				ch := make(chan llm.Envelope) // unbuffered, never written to
-				return ch, nil
-			},
-		)),
-	)
+type blockingProviderImpl struct{}
+
+func (blockingProviderImpl) Name() string       { return "blocking" }
+func (blockingProviderImpl) Models() llm.Models { return llm.Models{{ID: "blocking/default", Name: "blocking", Provider: "blocking", Aliases: []string{llm.ModelDefault}}} }
+func (blockingProviderImpl) CreateStream(ctx context.Context, _ llm.Buildable) (llm.Stream, error) {
+	ch := make(chan llm.Envelope)
+	go func() {
+		<-ctx.Done()
+		close(ch)
+	}()
+	return ch, nil
 }
+
+func blockingProvider() llm.Provider { return blockingProviderImpl{} }
 
 func TestNewInferenceOptions_AppliesOverrides(t *testing.T) {
 	opts := NewInferenceOptions(

@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 
+	acoremd "github.com/codewandler/agentcore/markdown"
+	"github.com/charmbracelet/glamour"
 	"github.com/codewandler/llm/usage"
 )
 
@@ -151,12 +153,19 @@ const (
 )
 
 type stepDisplay struct {
-	w     io.Writer
-	state displayState
+	w        io.Writer
+	state    displayState
+	mdBuffer *acoremd.Buffer
 }
 
 func newStepDisplay(w io.Writer) *stepDisplay {
-	return &stepDisplay{w: w, state: stateIdle}
+	d := &stepDisplay{w: w, state: stateIdle}
+	d.mdBuffer = acoremd.NewBuffer(func(blocks []acoremd.Block) {
+		for _, block := range blocks {
+			d.writeRenderedMarkdown(block.Markdown)
+		}
+	})
+	return d
 }
 
 // WriteReasoning outputs a reasoning token chunk in dim.
@@ -168,7 +177,7 @@ func (d *stepDisplay) WriteReasoning(chunk string) {
 	fmt.Fprint(d.w, chunk)
 }
 
-// WriteText streams a text token chunk directly to the terminal.
+// WriteText buffers markdown chunks and renders stable blocks as they become available.
 func (d *stepDisplay) WriteText(chunk string) {
 	if d.state == stateReasoning {
 		fmt.Fprintf(d.w, "%s\n\n", ansiReset)
@@ -176,7 +185,7 @@ func (d *stepDisplay) WriteText(chunk string) {
 	if d.state != stateText {
 		d.state = stateText
 	}
-	fmt.Fprint(d.w, chunk)
+	_, _ = d.mdBuffer.WriteString(chunk)
 }
 
 // PrintToolCall displays a tool call header and resets any open ANSI state.
@@ -185,6 +194,7 @@ func (d *stepDisplay) PrintToolCall(name string, args map[string]any) {
 	case stateReasoning:
 		fmt.Fprintf(d.w, "%s\n", ansiReset)
 	case stateText:
+		_ = d.mdBuffer.Flush()
 		fmt.Fprint(d.w, "\n")
 	}
 	d.state = stateIdle
@@ -197,6 +207,26 @@ func (d *stepDisplay) PrintToolCall(name string, args map[string]any) {
 	}
 }
 
+func (d *stepDisplay) writeRenderedMarkdown(md string) {
+	fmt.Fprint(d.w, renderMarkdown(md))
+}
+
+// renderMarkdown renders markdown text for terminal display using glamour.
+// Uses a fixed "dark" style for consistent colored output regardless of TTY status.
+func renderMarkdown(text string) string {
+	r, err := glamour.NewTermRenderer(
+		glamour.WithStandardStyle("dark"),
+		glamour.WithWordWrap(0),
+	)
+	if err != nil {
+		return text
+	}
+	out, err := r.Render(text)
+	if err != nil {
+		return text
+	}
+	return out
+}
 
 // End closes any open ANSI state. Call after Result() returns.
 func (d *stepDisplay) End() {
@@ -204,6 +234,7 @@ func (d *stepDisplay) End() {
 	case stateReasoning:
 		fmt.Fprintf(d.w, "%s\n", ansiReset)
 	case stateText:
+		_ = d.mdBuffer.Flush()
 		fmt.Fprint(d.w, "\n")
 	}
 	d.state = stateIdle
