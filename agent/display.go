@@ -64,38 +64,60 @@ func truncateDisplay(s string, max int) string {
 	return s[:max] + "..."
 }
 
-// formatUsageParts builds "input: N  cache_r: N (HIT%)  cache_w: N  output: N  cost: $X".
-// The hit-rate annotation on cache_r shows what fraction of cache-touched tokens
-// were reads (hits) vs writes (cold misses): cache_read / (cache_read + cache_write).
+// formatUsageParts builds a compact usage summary string.
+//
+// When caching is active the total input token count is shown first, followed
+// by a parenthesised cache breakdown so it's immediately clear how many tokens
+// were sent in total:
+//
+//	in: 12.5k (cache_r: 12.2k 98%  cache_w: 0  new: 300)  out: 1.2k  cost: $0.0032
+//
+// When there is no caching the display is simply:
+//
+//	in: 12.5k  out: 1.2k  cost: $0.0032
+//
 // Shared by step, turn, and session usage display.
 func formatUsageParts(rec usage.Record) string {
-	kindLabels := []struct {
-		kind  usage.TokenKind
-		label string
-	}{
-		{usage.KindInput, "input"},
-		{usage.KindCacheRead, "cache_r"},
-		{usage.KindCacheWrite, "cache_w"},
-		{usage.KindOutput, "output"},
-		{usage.KindReasoning, "reason"},
-	}
 	var parts []string
-	for _, kl := range kindLabels {
-		count := rec.Tokens.Count(kl.kind)
-		if count == 0 {
-			continue
+
+	// ── Input section ──
+	totalIn := rec.Tokens.TotalInput()
+	cacheRead := rec.Tokens.Count(usage.KindCacheRead)
+	cacheWrite := rec.Tokens.Count(usage.KindCacheWrite)
+	nonCache := rec.Tokens.Count(usage.KindInput)
+	hasCaching := cacheRead > 0 || cacheWrite > 0
+
+	if totalIn > 0 {
+		if hasCaching {
+			// Show total with cache breakdown in parentheses.
+			var cacheParts []string
+			if cacheRead > 0 {
+				hitRate := float64(cacheRead) * 100.0 / float64(totalIn)
+				cacheParts = append(cacheParts, fmt.Sprintf("cache_r: %s %.0f%%", compactCount(cacheRead), hitRate))
+			}
+			if cacheWrite > 0 {
+				cacheParts = append(cacheParts, fmt.Sprintf("cache_w: %s", compactCount(cacheWrite)))
+			}
+			if nonCache > 0 {
+				cacheParts = append(cacheParts, fmt.Sprintf("new: %s", compactCount(nonCache)))
+			}
+			parts = append(parts, fmt.Sprintf("in: %s (%s)", compactCount(totalIn), strings.Join(cacheParts, "  ")))
+		} else {
+			parts = append(parts, fmt.Sprintf("in: %s", compactCount(totalIn)))
 		}
-		s := fmt.Sprintf("%s: %s", kl.label, compactCount(count))
-	// Annotate cache_r with the percentage of input tokens served from cache:
-		// cache_read / (cache_read + input). This shows how many of the tokens sent
-		// to the model this call were already cached vs had to be transmitted.
-		if kl.kind == usage.KindCacheRead {
-			inputTokens := rec.Tokens.Count(usage.KindInput)
-			hitRate := float64(count) * 100.0 / float64(count+inputTokens)
-			s += fmt.Sprintf(" (%.0f%%)", hitRate)
-		}
-		parts = append(parts, s)
 	}
+
+	// ── Output section ──
+	output := rec.Tokens.Count(usage.KindOutput)
+	reasoning := rec.Tokens.Count(usage.KindReasoning)
+	if output > 0 {
+		parts = append(parts, fmt.Sprintf("out: %s", compactCount(output)))
+	}
+	if reasoning > 0 {
+		parts = append(parts, fmt.Sprintf("reason: %s", compactCount(reasoning)))
+	}
+
+	// ── Cost ──
 	if cs := formatCost(rec.Cost.Total); cs != "" {
 		parts = append(parts, fmt.Sprintf("cost: %s", cs))
 	}

@@ -65,7 +65,7 @@ func TestTruncateDisplay(t *testing.T) {
 }
 
 func TestFormatUsageParts(t *testing.T) {
-	t.Run("all fields", func(t *testing.T) {
+	t.Run("all fields with cache", func(t *testing.T) {
 		rec := usage.Record{
 			Tokens: usage.TokenItems{
 				{Kind: usage.KindInput, Count: 1204},
@@ -75,13 +75,15 @@ func TestFormatUsageParts(t *testing.T) {
 			Cost: usage.Cost{Total: 0.0023},
 		}
 		parts := formatUsageParts(rec)
-		assert.Contains(t, parts, "input: 1.2k")
-		assert.Contains(t, parts, "cache_r: 8.4k (88%)")  // 8432/(8432+1204) = 87.5%
-		assert.Contains(t, parts, "output: 87")
+		// total input = 1204 + 8432 = 9636
+		assert.Contains(t, parts, "in: 9.6k")
+		assert.Contains(t, parts, "cache_r: 8.4k 88%") // 8432/9636 = 87.5%
+		assert.Contains(t, parts, "new: 1.2k")
+		assert.Contains(t, parts, "out: 87")
 		assert.Contains(t, parts, "cost: $0.0023")
 	})
 
-	t.Run("zero tokens omitted", func(t *testing.T) {
+	t.Run("no cache plain input output", func(t *testing.T) {
 		rec := usage.Record{
 			Tokens: usage.TokenItems{
 				{Kind: usage.KindInput, Count: 100},
@@ -89,29 +91,30 @@ func TestFormatUsageParts(t *testing.T) {
 			},
 		}
 		parts := formatUsageParts(rec)
-		assert.Contains(t, parts, "input: 100")
-		assert.Contains(t, parts, "output: 50")
+		assert.Contains(t, parts, "in: 100")
+		assert.Contains(t, parts, "out: 50")
 		assert.NotContains(t, parts, "cache")
 		assert.NotContains(t, parts, "cost")
 	})
 
-	t.Run("cache coverage 60 percent", func(t *testing.T) {
+	t.Run("cache read and write with non-cache input", func(t *testing.T) {
 		rec := usage.Record{
 			Tokens: usage.TokenItems{
 				{Kind: usage.KindInput, Count: 200},
-				{Kind: usage.KindCacheRead, Count: 300}, // 300/(300+200) = 60 %
+				{Kind: usage.KindCacheRead, Count: 300}, // 300/600 = 50%
 				{Kind: usage.KindCacheWrite, Count: 100},
 				{Kind: usage.KindOutput, Count: 50},
 			},
 		}
 		parts := formatUsageParts(rec)
-		assert.Contains(t, parts, "cache_r: 300 (60%)")
+		// total = 200+300+100 = 600
+		assert.Contains(t, parts, "in: 600")
+		assert.Contains(t, parts, "cache_r: 300 50%")
 		assert.Contains(t, parts, "cache_w: 100")
-		// hit rate annotation must NOT appear on cache_w
-		assert.NotContains(t, parts, "cache_w: 100 (")
+		assert.Contains(t, parts, "new: 200")
 	})
 
-	t.Run("cache write only cold start 0 pct hit", func(t *testing.T) {
+	t.Run("cache write only cold start", func(t *testing.T) {
 		rec := usage.Record{
 			Tokens: usage.TokenItems{
 				{Kind: usage.KindInput, Count: 500},
@@ -120,17 +123,18 @@ func TestFormatUsageParts(t *testing.T) {
 			},
 		}
 		parts := formatUsageParts(rec)
+		// total = 500+400 = 900
+		assert.Contains(t, parts, "in: 900")
 		assert.Contains(t, parts, "cache_w: 400")
-		// No cache reads → no hit-rate annotation at all
+		assert.Contains(t, parts, "new: 500")
+		// No cache reads → no hit-rate annotation
 		assert.NotContains(t, parts, "cache_r")
-		assert.NotContains(t, parts, "%)")
 	})
 
 	t.Run("empty record", func(t *testing.T) {
 		assert.Equal(t, "", formatUsageParts(usage.Record{}))
 	})
 }
-
 func TestExtractBashOutput(t *testing.T) {
 	tests := []struct {
 		name  string
