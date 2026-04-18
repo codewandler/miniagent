@@ -127,9 +127,9 @@ func TestFormatUsageParts(t *testing.T) {
 		assert.NotContains(t, parts, "cache_r")
 	})
 
-		 t.Run("empty record", func(t *testing.T) {
-			assert.Equal(t, "", formatUsageParts(usage.Record{}))
-		})
+	t.Run("empty record", func(t *testing.T) {
+		assert.Equal(t, "", formatUsageParts(usage.Record{}))
+	})
 }
 
 func TestExtractBashOutput(t *testing.T) {

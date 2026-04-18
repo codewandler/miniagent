@@ -4,29 +4,46 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/codewandler/llm"
-	"github.com/codewandler/llm/cmd/llmcli/store"
-	"github.com/codewandler/llm/provider/auto"
-	"github.com/codewandler/miniagent/agent"
-	"github.com/spf13/cobra"
 	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/codewandler/llm"
+	"github.com/codewandler/llm/auto"
+	"github.com/codewandler/llm/cmd/llmcli/store"
+	"github.com/codewandler/llm/provider/anthropic"
+	"github.com/codewandler/llm/provider/anthropic/claude"
+	"github.com/codewandler/llm/provider/bedrock"
+	"github.com/codewandler/llm/provider/codex"
+	"github.com/codewandler/llm/provider/ollama"
+	"github.com/codewandler/llm/provider/openai"
+	"github.com/codewandler/llm/provider/openrouter"
+	"github.com/codewandler/miniagent/agent"
+	"github.com/spf13/cobra"
 )
 
 func main() {
 	if err := rootCmd().Execute(); err != nil {
-		// SilenceErrors is true, so cobra won't print the error.
-		// Print it ourselves so the user sees what went wrong.
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 type InferenceConfig = agent.InferenceOptions
+
+type providerRuntime struct {
+	service *llm.Service
+	models  llm.Models
+}
+
+func (p *providerRuntime) Name() string       { return "miniagent" }
+func (p *providerRuntime) Models() llm.Models { return p.models }
+func (p *providerRuntime) CreateStream(ctx context.Context, src llm.Buildable) (llm.Stream, error) {
+	return p.service.CreateStream(ctx, src)
+}
 
 func rootCmd() *cobra.Command {
 	var (
@@ -68,6 +85,7 @@ With a positional argument it runs the task once and exits.`,
 	cmd.AddCommand(completionCmd(cmd))
 	return cmd
 }
+
 func modelsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:           "models",
@@ -86,6 +104,7 @@ func modelsCmd() *cobra.Command {
 		},
 	}
 }
+
 func completionCmd(root *cobra.Command) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "completion",
@@ -117,6 +136,7 @@ func completionCmd(root *cobra.Command) *cobra.Command {
 	cmd.AddCommand(completionInstallCmd(root))
 	return cmd
 }
+
 func completionInstallCmd(root *cobra.Command) *cobra.Command {
 	var file string
 	cmd := &cobra.Command{
@@ -168,6 +188,7 @@ func completionInstallCmd(root *cobra.Command) *cobra.Command {
 	cmd.Flags().StringVar(&file, "file", "", "Override installation target file")
 	return cmd
 }
+
 func detectShell() string {
 	shell := strings.ToLower(filepath.Base(os.Getenv("SHELL")))
 	switch shell {
@@ -177,6 +198,7 @@ func detectShell() string {
 		return ""
 	}
 }
+
 func completionInstallPath(shell, override string) (string, error) {
 	if override != "" {
 		return override, nil
@@ -196,6 +218,7 @@ func completionInstallPath(shell, override string) (string, error) {
 		return "", fmt.Errorf("unsupported shell %q", shell)
 	}
 }
+
 func completeModelFlag(cmd *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	provider, err := createProvider(cmd.Context(), false)
 	if err != nil {
@@ -211,49 +234,32 @@ func completeModelFlag(cmd *cobra.Command, _ []string, toComplete string) ([]str
 			desc = m.Provider
 		}
 		if desc != "" {
-			matches = append(matches, m.ID+"	"+desc)
+			matches = append(matches, m.ID+"\t"+desc)
 		} else {
 			matches = append(matches, m.ID)
 		}
 	}
 	return matches, cobra.ShellCompDirectiveNoFileComp
 }
+
 func containsFold(s, substr string) bool {
-	if substr == "" {
-		return true
-	}
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
-func execute(
-	args []string,
-	inference InferenceConfig,
-	maxSteps int,
-	workspace string,
-	systemPrompt string,
-	totalTimeout time.Duration,
-	toolTimeout time.Duration,
-	debug bool,
-) error {
-	// Resolve and validate workspace
+
+func execute(args []string, inference InferenceConfig, maxSteps int, workspace, systemPrompt string, totalTimeout, toolTimeout time.Duration, debug bool) error {
 	if workspace == "" {
 		wd, err := os.Getwd()
 		if err != nil {
-			return fmt.Errorf("get working directory: %w", err)
+			return err
 		}
 		workspace = wd
 	}
-	workspace, _ = filepath.Abs(workspace)
-	info, err := os.Stat(workspace)
-	if err != nil || !info.IsDir() {
-		return fmt.Errorf("workspace directory does not exist: %s", workspace)
-	}
-	// Provider setup (mirrors cmd/llmcli)
+
 	ctx := context.Background()
 	provider, err := createProvider(ctx, debug)
 	if err != nil {
 		return err
 	}
-	// Resolve model string to canonical ID
 	if inference.Model != "" {
 		resolvedModel, err := resolveModel(provider, inference.Model)
 		if err != nil {
@@ -261,7 +267,6 @@ func execute(
 		}
 		inference.Model = resolvedModel
 	}
-	// Build agent
 	a := agent.New(provider,
 		agent.WithWorkspace(workspace),
 		agent.WithToolTimeout(toolTimeout),
@@ -269,7 +274,6 @@ func execute(
 		agent.WithInferenceOptions(inference),
 		agent.WithMaxSteps(maxSteps),
 	)
-	// One-shot mode
 	if len(args) == 1 {
 		ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 		if totalTimeout > 0 {
@@ -280,54 +284,44 @@ func execute(
 		fmt.Println()
 		agent.PrintSessionUsage(os.Stdout, a.SessionID(), a.Tracker().Aggregate())
 		if errors.Is(err, agent.ErrMaxStepsReached) {
-			// Partial output was produced; treat as a warning, not a hard failure.
 			fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 			return nil
 		}
 		return err
 	}
-	// REPL mode
 	return agent.RunREPL(ctx, a, os.Stdin)
 }
+
 // resolveModel resolves a model string (alias or ID) to its canonical model ID.
-// It searches through the provider's available models and returns the canonical ID.
-func resolveModel(provider llm.Provider, modelStr string) (string, error) {
+func resolveModel(provider llm.ModelsProvider, modelStr string) (string, error) {
 	if modelStr == "" {
 		return "", fmt.Errorf("model string cannot be empty")
 	}
-
-	// Search through available models
 	for _, m := range provider.Models() {
-		// Exact match on ID
 		if m.ID == modelStr {
 			return m.ID, nil
 		}
-		// Match on aliases
 		for _, alias := range m.Aliases {
 			if alias == modelStr {
 				return m.ID, nil
 			}
 		}
 	}
-
-	// Not found
 	return "", fmt.Errorf("unknown model: %q (use 'miniagent models' to list available models)", modelStr)
 }
 
-// [REVIEW FIX #6]: return llm.Provider interface, not *router.Provider.
-func createProvider(ctx context.Context, debug bool) (llm.Provider, error) {
+func createProvider(ctx context.Context, debug bool) (*providerRuntime, error) {
 	var autoOpts []auto.Option
 	autoOpts = append(autoOpts, auto.WithName("miniagent"))
 	if debug {
 		autoOpts = append(autoOpts, auto.WithLLMOptions(llm.WithLogger(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))))
 	}
-	// Claude OAuth token store — non-fatal if unavailable
 	if dir, err := store.DefaultDir(); err == nil {
 		if ts, err := store.NewFileTokenStore(dir); err == nil {
 			autoOpts = append(autoOpts, auto.WithClaude(ts))
 		}
 	}
-	provider, err := auto.New(ctx, autoOpts...)
+	service, err := auto.New(ctx, autoOpts...)
 	if err != nil {
 		return nil, fmt.Errorf(`no LLM providers found.
 Set one of:
@@ -338,5 +332,33 @@ Or authenticate with Claude:
   llmcli auth login
 (%w)`, err)
 	}
-	return provider, nil
+	models := aggregateKnownModels()
+	if len(models) == 0 {
+		return nil, fmt.Errorf("no models available")
+	}
+	return &providerRuntime{service: service, models: models}, nil
+}
+
+func aggregateKnownModels() llm.Models {
+	seen := map[string]bool{}
+	var out llm.Models
+	appendModels := func(models llm.Models) {
+		for _, m := range models {
+			if m.ID == "" || seen[m.ID] {
+				continue
+			}
+			seen[m.ID] = true
+			out = append(out, m)
+		}
+	}
+	appendModels(anthropic.New().Models())
+	appendModels(openai.New().Models())
+	appendModels(openrouter.New().Models())
+	appendModels(bedrock.New().Models())
+	appendModels(ollama.New().Models())
+	appendModels(claude.New().Models())
+	if auth, err := codex.LoadAuth(); err == nil {
+		appendModels(codex.New(auth).Models())
+	}
+	return out
 }

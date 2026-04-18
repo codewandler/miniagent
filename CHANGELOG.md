@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.2.1 — 2026-04-18
+
+Follow-up release for the markdown streaming integration.
+
+### Added
+- Integration test scaffolding in `integration/markdown_render_test.go`
+- Additional display tests covering stable markdown buffering and glamour rendering
+
+### Changed
+- Updated provider creation to match current `codewandler/llm` service-based auto package
+- Wrapped `llm.Service` in a provider runtime compatible with the existing agent interface
+- Restored full project build and `task install` after upstream llm changes
+
+### Fixed
+- Fixed imports after `llm/provider/auto` moved to `llm/auto`
+- Fixed model listing / completion / resolution against the newer llm service API
+- Fixed miniagent tests broken by llm provider helper changes
+
 ## v0.2.0 — 2026-04-18
 
 Added stable streaming markdown rendering for assistant output.
