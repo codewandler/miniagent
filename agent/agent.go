@@ -332,8 +332,7 @@ func (a *Agent) runStep(
 		}).
 		OnEvent(llm.TypedEventHandler[*llm.ToolCallEvent](func(ev *llm.ToolCallEvent) {
 			tc := ev.ToolCall
-			// For generic tools from agentcore, just show the name
-			sd.PrintToolCall(tc.ToolName(), "")
+			sd.PrintToolCall(tc.ToolName(), tc.ToolArgs())
 		})).
 		OnEvent(llm.TypedEventHandler[*llm.UsageUpdatedEvent](func(ev *llm.UsageUpdatedEvent) {
 			rec := ev.Record
@@ -396,8 +395,9 @@ func (a *Agent) createToolHandlers() []tool.NamedHandler {
 		handlers = append(handlers, tool.NewHandler[json.RawMessage, interface{}](
 			toolCopy.Name(),
 			func(ctx context.Context, input json.RawMessage) (*interface{}, error) {
-				// Create agentcore context with activation state
+				// Create agentcore context with activation state, wrapping the caller's ctx
 				toolCtx := &agentcoreToolContext{
+					ctx:        ctx,
 					workspace:  a.workspace,
 					activation: a.activation,
 					extra:      make(map[string]interface{}),
@@ -465,6 +465,7 @@ func convertToolDefinition(t acoreTool.Tool) tool.Definition {
 
 // agentcoreToolContext implements acoreTool.Ctx for agentcore tools
 type agentcoreToolContext struct {
+	ctx        context.Context
 	workspace  string
 	activation interfaces.ActivationState
 	extra      map[string]interface{}
@@ -480,19 +481,31 @@ func (c *agentcoreToolContext) Extra() map[string]interface{} {
 
 // Deadline and Done implement context.Context
 func (c *agentcoreToolContext) Deadline() (time.Time, bool) {
-	return time.Time{}, false
+	if c.ctx == nil {
+		return time.Time{}, false
+	}
+	return c.ctx.Deadline()
 }
 
 func (c *agentcoreToolContext) Done() <-chan struct{} {
-	return nil
+	if c.ctx == nil {
+		return nil
+	}
+	return c.ctx.Done()
 }
 
 func (c *agentcoreToolContext) Err() error {
-	return nil
+	if c.ctx == nil {
+		return nil
+	}
+	return c.ctx.Err()
 }
 
 func (c *agentcoreToolContext) Value(key interface{}) interface{} {
-	return nil
+	if c.ctx == nil {
+		return nil
+	}
+	return c.ctx.Value(key)
 }
 
 // AgentID and SessionID implement agentcore/tool.Ctx

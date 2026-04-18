@@ -253,6 +253,14 @@ func execute(
 	if err != nil {
 		return err
 	}
+	// Resolve model string to canonical ID
+	if inference.Model != "" {
+		resolvedModel, err := resolveModel(provider, inference.Model)
+		if err != nil {
+			return err
+		}
+		inference.Model = resolvedModel
+	}
 	// Build agent
 	a := agent.New(provider,
 		agent.WithWorkspace(workspace),
@@ -280,6 +288,30 @@ func execute(
 	}
 	// REPL mode
 	return agent.RunREPL(ctx, a, os.Stdin)
+}
+// resolveModel resolves a model string (alias or ID) to its canonical model ID.
+// It searches through the provider's available models and returns the canonical ID.
+func resolveModel(provider llm.Provider, modelStr string) (string, error) {
+	if modelStr == "" {
+		return "", fmt.Errorf("model string cannot be empty")
+	}
+
+	// Search through available models
+	for _, m := range provider.Models() {
+		// Exact match on ID
+		if m.ID == modelStr {
+			return m.ID, nil
+		}
+		// Match on aliases
+		for _, alias := range m.Aliases {
+			if alias == modelStr {
+				return m.ID, nil
+			}
+		}
+	}
+
+	// Not found
+	return "", fmt.Errorf("unknown model: %q (use 'miniagent models' to list available models)", modelStr)
 }
 
 // [REVIEW FIX #6]: return llm.Provider interface, not *router.Provider.

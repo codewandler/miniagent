@@ -186,14 +186,15 @@ func TestStepDisplay_StateTransitions(t *testing.T) {
 		sd := newStepDisplay(&buf)
 
 		sd.WriteText("let me check")
-		sd.PrintToolCall("bash", "ls -la")
+		sd.PrintToolCall("bash", map[string]any{"command": "ls -la"})
 		sd.End()
 
 		out := buf.String()
 		// Check stripped output contains the text
 		assert.Contains(t, stripANSI(out), "let me check")
 		assert.Contains(t, out, "🔧 bash")
-		assert.Contains(t, out, "$ ls -la")
+		assert.Contains(t, out, `"command"`)
+		assert.Contains(t, out, `"ls -la"`)
 	})
 }
 

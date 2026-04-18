@@ -163,7 +163,7 @@ func (d *stepDisplay) WriteText(chunk string) {
 
 // PrintToolCall displays a tool call header. Flushes any buffered text as
 // markdown and resets any open ANSI state.
-func (d *stepDisplay) PrintToolCall(name, command string) {
+func (d *stepDisplay) PrintToolCall(name string, args map[string]any) {
 	switch d.state {
 	case stateReasoning:
 		fmt.Fprintf(d.w, "%s\n", ansiReset)
@@ -174,7 +174,12 @@ func (d *stepDisplay) PrintToolCall(name, command string) {
 	}
 	d.state = stateIdle
 	fmt.Fprintf(d.w, "\n%s🔧 %s%s\n", ansiBrightYellow, name, ansiReset)
-	fmt.Fprintf(d.w, "   %s$ %s%s\n", ansiDim, command, ansiReset)
+	if len(args) > 0 {
+		jsonArgs, _ := json.MarshalIndent(args, "   ", "  ")
+		fmt.Fprintf(d.w, "   %s$ %s%s\n", ansiDim, string(jsonArgs), ansiReset)
+	} else {
+		fmt.Fprintf(d.w, "   %s(no args)%s\n", ansiDim, ansiReset)
+	}
 }
 
 // renderMarkdown renders markdown text for terminal display using glamour.
