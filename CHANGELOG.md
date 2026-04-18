@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.2.2 — 2026-04-19
+
+Cleanup and release follow-up for the markdown streaming work.
+
+### Changed
+- Made `codex/gpt-5.4` the actual default model and ensured Codex-prefixed model IDs resolve consistently
+- Finalized test layout under `tests/integration/` and `tests/e2e/`
+- Added renderer injection for cleaner display tests without ANSI stripping
+
+### Fixed
+- Removed obsolete top-level `integration/markdown_render_test.go` after moving tests under `tests/`
+- Kept build, tests, and `task install` passing after the test layout cleanup
+
 ## v0.2.1 — 2026-04-18
 
 Follow-up release for the markdown streaming integration.
