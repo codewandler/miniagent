@@ -1,0 +1,15 @@
+{
+  "instance_id": "gin__parseaccept-0002",
+  "dataset_split": "custom-go",
+  "repo": "gin-gonic/gin",
+  "base_commit": "custom-fixture",
+  "problem_statement": "Content negotiation parsing is broken: media types with quality parameters are being truncated incorrectly. Fix the parser with a minimal change and keep the targeted test passing.",
+  "hints_text": "Look at parseAccept and how it handles the semicolon separator.",
+  "fixture_path": "external_bench/swebench/fixtures/gin_parseaccept_bug",
+  "gold_patch": "gold.patch",
+  "setup_strategy": "swebench-go",
+  "install_command": "go test -c .",
+  "validate_command": "go test -v . -run '^TestParseAccept$'",
+  "language": "go",
+  "timeout_sec": 300
+}

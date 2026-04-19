@@ -19,3 +19,6 @@ evolve/cycles.jsonl
 
 # Built binary
 miniagent
+external_bench/swebench/results/
+external_bench/swebench/cache/
+external_bench/swebench/logs/

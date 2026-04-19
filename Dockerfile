@@ -23,8 +23,13 @@ RUN apt-get update \
       bc \
       ca-certificates \
       coreutils \
+      build-essential \
       git \
       jq \
+      golang-go \
+      python3 \
+      python3-venv \
+      python3-pip \
  && rm -rf /var/lib/apt/lists/*
 
 # Dedicated non-root user for the evolution loop

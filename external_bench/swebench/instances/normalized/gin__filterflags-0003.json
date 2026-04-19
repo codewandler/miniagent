@@ -1,0 +1,15 @@
+{
+  "instance_id": "gin__filterflags-0003",
+  "dataset_split": "custom-go",
+  "repo": "gin-gonic/gin",
+  "base_commit": "custom-fixture",
+  "problem_statement": "Flag filtering leaves trailing spaces in content types. Fix the helper so it strips flag separators correctly while keeping behavior minimal.",
+  "hints_text": "Look at filterFlags and how it stops scanning the input.",
+  "fixture_path": "external_bench/swebench/fixtures/gin_filterflags_bug",
+  "gold_patch": "gold.patch",
+  "setup_strategy": "swebench-go",
+  "install_command": "go test -c .",
+  "validate_command": "go test -v . -run '^TestFilterFlags$'",
+  "language": "go",
+  "timeout_sec": 300
+}

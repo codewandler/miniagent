@@ -1,0 +1,11 @@
+diff --git a/calc.go b/calc.go
+index a2430f1..a7d669f 100644
+--- a/calc.go
++++ b/calc.go
+@@ -1,5 +1,5 @@
+ package greeter
+ 
+ func Add(a, b int) int {
+-	return a - b
++	return a + b
+ }

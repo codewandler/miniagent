@@ -1,0 +1,7 @@
+SWE-bench run profile.
+
+Guidance:
+- inspect the repository before editing
+- run targeted tests early
+- keep the patch minimal and evidence-driven
+- verify the fix before finishing

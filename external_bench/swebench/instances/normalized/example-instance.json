@@ -1,0 +1,12 @@
+{
+  "instance_id": "example__demo-0001",
+  "dataset_split": "lite",
+  "repo": "example/example-repo",
+  "base_commit": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+  "issue_text": "Example issue: fix a failing test in a demo repository.",
+  "hints_text": "This is placeholder metadata for scaffold bring-up.",
+  "test_command": "pytest -q",
+  "setup_strategy": "python-pytest",
+  "timeout_sec": 1800,
+  "language": "python"
+}

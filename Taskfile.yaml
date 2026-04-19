@@ -52,6 +52,35 @@ tasks:
     cmds:
       - docker build -t {{.IMAGE}} -f Dockerfile .
 
+  # ── bench:swe ─────────────────────────────────────────────────────────────
+  bench:swe:
+    desc: "Run the dockerized SWE-bench-style benchmark harness"
+    deps: [build]
+    cmds:
+      - |
+        mkdir -p .go-cache/build .go-cache/mod
+        USER_UID=$(id -u)
+        USER_GID=$(id -g)
+        docker run --rm -i \
+          --security-opt no-new-privileges \
+          --cap-drop ALL \
+          --read-only \
+          --tmpfs /tmp:rw,nosuid,exec,size=512m \
+          --tmpfs /root:rw,nosuid,noexec,size=32m \
+          -u "${USER_UID}:${USER_GID}" \
+          -v "{{.REPO_ROOT}}:/repo" \
+          -e HOME=/tmp \
+          -e GOCACHE=/repo/.go-cache/build \
+          -e GOMODCACHE=/repo/.go-cache/mod \
+          -e GOTOOLCHAIN=local \
+          -e SWE_DRIVER="${SWE_DRIVER:-oracle}" \
+          -e SWE_RUN_LABEL=task \
+          -e ANTHROPIC_API_KEY \
+          -e OPENAI_API_KEY \
+          -e OPENROUTER_API_KEY \
+          {{.IMAGE}} \
+          /repo/external_bench/swebench/scripts/bench_swe.sh {{.CLI_ARGS}}
+
   # ── evolve ────────────────────────────────────────────────────────────────
   evolve:
     desc: "Run the self-improvement evolution loop inside a hardened Docker sandbox"
@@ -69,7 +98,7 @@ tasks:
           --security-opt no-new-privileges \
           --cap-drop ALL \
           --read-only \
-          --tmpfs /tmp:rw,nosuid,size=512m \
+          --tmpfs /tmp:rw,nosuid,exec,size=512m \
           --tmpfs /root:rw,nosuid,noexec,size=32m \
           -u "${USER_UID}:${USER_GID}" \
           -v "{{.GOROOT}}:/usr/local/go:ro" \

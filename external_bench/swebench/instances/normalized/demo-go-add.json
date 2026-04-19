@@ -1,0 +1,14 @@
+{
+  "instance_id": "demo__go-add-0001",
+  "dataset_split": "demo-lite",
+  "repo": "local/demo-go-greeter",
+  "base_commit": "local-fixture",
+  "issue_text": "A user reports that Add(2, 3) returns the wrong value. Fix the bug in the repository and make the tests pass. Keep the change minimal.",
+  "hints_text": "Run the existing tests and inspect the implementation before editing.",
+  "fixture_path": "external_bench/swebench/fixtures/go_greeter_bug",
+  "gold_patch": "gold.patch",
+  "validate_command": "go test ./...",
+  "setup_strategy": "go-test",
+  "timeout_sec": 300,
+  "language": "go"
+}

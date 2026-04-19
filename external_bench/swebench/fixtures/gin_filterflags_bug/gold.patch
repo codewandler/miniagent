@@ -1,0 +1,13 @@
+diff --git a/utils.go b/utils.go
+index a337091..ff205b7 100644
+--- a/utils.go
++++ b/utils.go
+@@ -2,7 +2,7 @@ package gin
+ 
+ func filterFlags(content string) string {
+ 	for i, char := range content {
+-		if char == ';' {
++		if char == ' ' || char == ';' {
+ 			return content[:i]
+ 		}
+ 	}

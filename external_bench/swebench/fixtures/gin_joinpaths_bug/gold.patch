@@ -1,0 +1,13 @@
+diff --git a/utils.go b/utils.go
+index 0609b74..ca1d5ad 100644
+--- a/utils.go
++++ b/utils.go
+@@ -15,6 +15,6 @@ func joinPaths(absolutePath, relativePath string) string {
+ 
+ 	finalPath := path.Join(absolutePath, relativePath)
+ 	if lastChar(relativePath) == '/' && lastChar(finalPath) != '/' {
+-		return finalPath
++		return finalPath + "/"
+ 	}
+ 	return finalPath
+ }

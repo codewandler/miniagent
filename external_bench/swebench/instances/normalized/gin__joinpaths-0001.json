@@ -1,0 +1,15 @@
+{
+  "instance_id": "gin__joinpaths-0001",
+  "dataset_split": "custom-go",
+  "repo": "gin-gonic/gin",
+  "base_commit": "custom-fixture",
+  "problem_statement": "The router path joining logic drops a trailing slash in cases where the relative path ends with '/'. Fix the bug with a minimal change and keep the existing tests passing.",
+  "hints_text": "Look at joinPaths and the trailing-slash behavior covered by TestJoinPaths.",
+  "fixture_path": "external_bench/swebench/fixtures/gin_joinpaths_bug",
+  "gold_patch": "gold.patch",
+  "setup_strategy": "swebench-go",
+  "install_command": "go test -c .",
+  "validate_command": "go test -v . -run '^TestJoinPaths$'",
+  "language": "go",
+  "timeout_sec": 300
+}
