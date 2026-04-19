@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.2.5 — 2026-04-19
+
+Improved streamed markdown rendering so terminal layout is width-aware, stable, and visually consistent between blocks.
+
+### Changed
+- Markdown rendering now uses terminal-width-aware glamour wrapping instead of relying on terminal hard wraps
+- Streaming markdown display now trims only outer renderer-added blank lines while keeping stable block-by-block rendering
+- Reused the markdown renderer setup per display path to keep incremental rendering efficient
+
+### Fixed
+- Removed extra visual blank lines between independently rendered markdown blocks, including heading-to-paragraph transitions
+- Wrapped paragraph continuation lines now align correctly because wrapping is handled by the renderer instead of the terminal
+
 ## v0.2.4 — 2026-04-19
 
 Added built-in web tooling via agentcore, including optional Tavily-backed web search when configured.
@@ -10,7 +23,7 @@ Added built-in web tooling via agentcore, including optional Tavily-backed web s
 - Added agent tests covering both the configured and unconfigured web-search cases
 
 ### Changed
-- Updated `github.com/codewandler/agentcore` to `v0.2.1` to pick up the new web tooling
+- Updated `github.com/codewandler/agentcore` to `v0.2.2` to pick up the new web tooling
 
 ## v0.2.3 — 2026-04-19
 

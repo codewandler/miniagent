@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/glamour"
 	acoremd "github.com/codewandler/agentcore/markdown"
 	"github.com/codewandler/llm/usage"
+	"golang.org/x/term"
 )
 
 // ANSI escape codes
@@ -23,6 +26,8 @@ const (
 )
 
 const thinSpace = '\u2009'
+
+var ansiOnlyLineRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 // formatTokenCount formats an integer with thin-space thousands separators.
 func formatTokenCount(n int) string {
@@ -153,14 +158,15 @@ const (
 )
 
 type stepDisplay struct {
-	w              io.Writer
-	state          displayState
-	mdBuffer       *acoremd.Buffer
-	markdownRender func(string) string
+	w                   io.Writer
+	state               displayState
+	mdBuffer            *acoremd.Buffer
+	markdownRender      func(string) string
+	hasRenderedMarkdown bool
 }
 
 func newStepDisplay(w io.Writer) *stepDisplay {
-	return newStepDisplayWithRenderer(w, renderMarkdown)
+	return newStepDisplayWithRenderer(w, newMarkdownRendererForWriter(w))
 }
 
 func newStepDisplayWithRenderer(w io.Writer, renderer func(string) string) *stepDisplay {
@@ -206,6 +212,7 @@ func (d *stepDisplay) PrintToolCall(name string, args map[string]any) {
 		fmt.Fprint(d.w, "\n")
 	}
 	d.state = stateIdle
+	d.hasRenderedMarkdown = false
 	fmt.Fprintf(d.w, "\n%s🔧 %s%s\n", ansiBrightYellow, name, ansiReset)
 	if len(args) > 0 {
 		jsonArgs, _ := json.MarshalIndent(args, "   ", "  ")
@@ -216,24 +223,79 @@ func (d *stepDisplay) PrintToolCall(name string, args map[string]any) {
 }
 
 func (d *stepDisplay) writeRenderedMarkdown(md string) {
-	fmt.Fprint(d.w, d.markdownRender(md))
+	rendered := d.markdownRender(md)
+	if rendered == "" {
+		return
+	}
+	if d.hasRenderedMarkdown {
+		fmt.Fprint(d.w, "\n\n")
+	}
+	fmt.Fprint(d.w, rendered)
+	d.hasRenderedMarkdown = true
 }
 
 // renderMarkdown renders markdown text for terminal display using glamour.
 // Uses a fixed "dark" style for consistent colored output regardless of TTY status.
 func renderMarkdown(text string) string {
+	return newMarkdownRendererForWriter(os.Stdout)(text)
+}
+
+func newMarkdownRendererForWriter(w io.Writer) func(string) string {
+	return newMarkdownRenderer(markdownRenderWidth(w))
+}
+
+func newMarkdownRenderer(width int) func(string) string {
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStandardStyle("dark"),
-		glamour.WithWordWrap(0),
+		glamour.WithWordWrap(width),
 	)
 	if err != nil {
-		return text
+		return func(s string) string { return s }
 	}
-	out, err := r.Render(text)
-	if err != nil {
-		return text
+	return func(s string) string {
+		out, err := r.Render(s)
+		if err != nil {
+			return s
+		}
+		return trimOuterRenderedBlankLines(out)
 	}
-	return out
+}
+
+func markdownRenderWidth(w io.Writer) int {
+	const fallback = 80
+	f, ok := w.(*os.File)
+	if !ok {
+		return fallback
+	}
+	width, _, err := term.GetSize(int(f.Fd()))
+	if err != nil || width <= 20 {
+		return fallback
+	}
+	return width
+}
+
+func trimOuterRenderedBlankLines(s string) string {
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	start := 0
+	for start < len(lines) && isVisuallyBlankRenderedLine(lines[start]) {
+		start++
+	}
+	end := len(lines)
+	for end > start && isVisuallyBlankRenderedLine(lines[end-1]) {
+		end--
+	}
+	if start >= end {
+		return ""
+	}
+	return strings.Join(lines[start:end], "\n")
+}
+
+func isVisuallyBlankRenderedLine(s string) bool {
+	s = ansiOnlyLineRE.ReplaceAllString(s, "")
+	return strings.TrimSpace(s) == ""
 }
 
 // End closes any open ANSI state. Call after Result() returns.
@@ -244,6 +306,7 @@ func (d *stepDisplay) End() {
 	case stateText:
 		_ = d.mdBuffer.Flush()
 		fmt.Fprint(d.w, "\n")
+		d.hasRenderedMarkdown = false
 	}
 	d.state = stateIdle
 }

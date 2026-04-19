@@ -129,10 +129,28 @@ func TestExtractBashOutput(t *testing.T) {
 }
 
 func TestRenderMarkdown_UsesExplicitStyle(t *testing.T) {
-	out := renderMarkdown("# Title\n\n- item\n")
+	out := newMarkdownRenderer(80)("# Title\n\n- item\n")
 	assert.Contains(t, out, "Title")
 	assert.Contains(t, out, "item")
 	assert.NotEqual(t, "# Title\n\n- item\n", out)
+}
+
+func TestIsVisuallyBlankRenderedLine(t *testing.T) {
+	assert.True(t, isVisuallyBlankRenderedLine(""))
+	assert.True(t, isVisuallyBlankRenderedLine("   \t"))
+	assert.True(t, isVisuallyBlankRenderedLine("\x1b[0m"))
+	assert.True(t, isVisuallyBlankRenderedLine("\x1b[38;5;252m\x1b[0m  "))
+	assert.False(t, isVisuallyBlankRenderedLine("\x1b[38;5;252mTitle\x1b[0m"))
+}
+
+func TestTrimOuterRenderedBlankLines(t *testing.T) {
+	assert.Equal(t, "\x1b[0mTitle", trimOuterRenderedBlankLines("\n\x1b[0mTitle\n\x1b[0m\n"))
+	assert.Equal(t, "hello\nworld", trimOuterRenderedBlankLines("\n  \nhello\nworld\n\n"))
+	assert.Equal(t, "", trimOuterRenderedBlankLines("\n \n\t\n"))
+}
+
+func TestMarkdownRenderWidth(t *testing.T) {
+	assert.Equal(t, 80, markdownRenderWidth(&strings.Builder{}))
 }
 
 func TestStepDisplay_StateTransitions(t *testing.T) {
@@ -165,6 +183,24 @@ func TestStepDisplay_StateTransitions(t *testing.T) {
 		out := buf.String()
 		assert.Contains(t, out, "hello world")
 		assert.NotContains(t, out, ansiDim)
+	})
+
+	t.Run("rendered blocks use controlled separators", func(t *testing.T) {
+		var buf strings.Builder
+		renderer := func(s string) string {
+			switch s {
+			case "Paragraph one.\n":
+				return trimOuterRenderedBlankLines("\n\x1b[0mParagraph one.\n\n")
+			case "- a\n- b\n":
+				return trimOuterRenderedBlankLines("\n\x1b[0m* a\n* b\n\n")
+			default:
+				return s
+			}
+		}
+		sd := newStepDisplayWithRenderer(&buf, renderer)
+		sd.writeRenderedMarkdown("Paragraph one.\n")
+		sd.writeRenderedMarkdown("- a\n- b\n")
+		assert.Equal(t, "\x1b[0mParagraph one.\n\n\x1b[0m* a\n* b", buf.String())
 	})
 
 	t.Run("fenced code is withheld until closed", func(t *testing.T) {
