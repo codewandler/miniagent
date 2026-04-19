@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"io"
 	"strconv"
 	"testing"
 	"time"
@@ -147,4 +148,32 @@ func TestRunTurn_HistoryPersistsAcrossTurns(t *testing.T) {
 	// Both turns have usage records
 	assert.NotEmpty(t, a.Tracker().Filter(usage.ByTurnID(strconv.Itoa(1))))
 	assert.NotEmpty(t, a.Tracker().Filter(usage.ByTurnID(strconv.Itoa(2))))
+}
+
+func TestNewIncludesWebSearchWhenTavilyConfigured(t *testing.T) {
+	t.Setenv("TAVILY_API_KEY", "test-key")
+	t.Setenv("WEBSEARCH_PROVIDER", "tavily")
+
+	a := New(blockingProvider(), WithWorkspace(t.TempDir()), WithOutput(io.Discard))
+
+	var names []string
+	for _, def := range a.toolDefs {
+		names = append(names, def.Name)
+	}
+	require.Contains(t, names, "web_fetch")
+	require.Contains(t, names, "web_search")
+}
+
+func TestNewOmitsWebSearchWithoutTavilyKey(t *testing.T) {
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("WEBSEARCH_PROVIDER", "")
+
+	a := New(blockingProvider(), WithWorkspace(t.TempDir()), WithOutput(io.Discard))
+
+	var names []string
+	for _, def := range a.toolDefs {
+		names = append(names, def.Name)
+	}
+	require.Contains(t, names, "web_fetch")
+	require.NotContains(t, names, "web_search")
 }

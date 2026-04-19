@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.2.4 — 2026-04-19
+
+Added built-in web tooling via agentcore, including optional Tavily-backed web search when configured.
+
+### Added
+- Registered `web_fetch` in the default tool set
+- Registered `web_search` automatically when `WEBSEARCH_PROVIDER=tavily` and `TAVILY_API_KEY` is set
+- Added agent tests covering both the configured and unconfigured web-search cases
+
+### Changed
+- Updated `github.com/codewandler/agentcore` to `v0.2.1` to pick up the new web tooling
+
 ## v0.2.3 — 2026-04-19
 
 Documentation release for the context-management guide.

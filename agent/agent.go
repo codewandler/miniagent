@@ -16,6 +16,7 @@ import (
 	"github.com/codewandler/agentcore/tools/filesystem"
 	"github.com/codewandler/agentcore/tools/shell"
 	"github.com/codewandler/agentcore/tools/toolmgmt"
+	"github.com/codewandler/agentcore/tools/web"
 	"github.com/codewandler/llm"
 	"github.com/codewandler/llm/msg"
 	"github.com/codewandler/llm/tool"
@@ -178,6 +179,10 @@ func (a *Agent) setupTools(workspace string, toolTimeout time.Duration) {
 	// Filesystem tools
 	fsTools := filesystem.Tools()
 	allTools = append(allTools, fsTools...)
+
+	// Web tools (web_fetch always, web_search when a default provider is configured)
+	webTools := web.Tools(web.DefaultSearchProviderFromEnv())
+	allTools = append(allTools, webTools...)
 
 	a.allTools = allTools
 
