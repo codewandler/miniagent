@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.2.3 — 2026-04-19
+
+Documentation release for the context-management guide.
+
+### Added
+- Added a comprehensive `docs/context-management.md` guide for coding-agent context management
+- Added web-search-informed coverage of context budgeting, recency windows, selective retrieval, prompt caching, and evaluation
+- Added concrete external references for follow-up verification
+
+### Changed
+- Expanded the guide from an advantages-only overview into a more operational engineering document
+
+### Fixed
+- Documented failure modes, disadvantages, common culprits, and practical mitigations for each major context-management pattern
+
 ## v0.2.2 — 2026-04-19
 
 Cleanup and release follow-up for the markdown streaming work.
