@@ -359,9 +359,94 @@ func printStepUsage(w io.Writer, step int, rec usage.Record, model string) {
 	}
 	if parts == "" {
 		fmt.Fprintf(w, "%s   ── step %d ──%s%s\n", ansiDim, step, modelPart, ansiReset)
-		return
+	} else {
+		fmt.Fprintf(w, "%s   ── step %d ── %s%s%s\n", ansiDim, step, parts, modelPart, ansiReset)
 	}
-	fmt.Fprintf(w, "%s   ── step %d ── %s%s%s\n", ansiDim, step, parts, modelPart, ansiReset)
+	printStepUsageDetails(w, rec)
+}
+
+func printStepUsageDetails(w io.Writer, rec usage.Record) {
+	if parts := stepUsageDimsParts(rec); len(parts) > 0 {
+		fmt.Fprintf(w, "%s   dims: %s%s\n", ansiDim, strings.Join(parts, " "), ansiReset)
+	}
+	if parts := stepUsageUsageParts(rec); len(parts) > 0 {
+		fmt.Fprintf(w, "%s   usage: %s%s\n", ansiDim, strings.Join(parts, " "), ansiReset)
+	}
+	if parts := stepUsageCostParts(rec); len(parts) > 0 {
+		fmt.Fprintf(w, "%s   costs: %s%s\n", ansiDim, strings.Join(parts, " "), ansiReset)
+	}
+}
+
+func stepUsageDimsParts(rec usage.Record) []string {
+	var parts []string
+	if rec.Dims.Provider != "" {
+		parts = append(parts, fmt.Sprintf("provider=%s", rec.Dims.Provider))
+	}
+	if rec.Dims.Model != "" {
+		parts = append(parts, fmt.Sprintf("model=%s", rec.Dims.Model))
+	}
+	if rec.Dims.RequestID != "" {
+		parts = append(parts, fmt.Sprintf("request_id=%s", rec.Dims.RequestID))
+	}
+	if rec.Dims.TurnID != "" {
+		parts = append(parts, fmt.Sprintf("turn_id=%s", rec.Dims.TurnID))
+	}
+	if rec.Dims.SessionID != "" {
+		parts = append(parts, fmt.Sprintf("session_id=%s", rec.Dims.SessionID))
+	}
+	if len(rec.Dims.Labels) > 0 {
+		parts = append(parts, fmt.Sprintf("labels=%v", rec.Dims.Labels))
+	}
+	return parts
+}
+
+func stepUsageUsageParts(rec usage.Record) []string {
+	var parts []string
+	if v := rec.Tokens.TotalInput(); v != 0 {
+		parts = append(parts, fmt.Sprintf("total_input=%d", v))
+	}
+	if v := rec.Tokens.Count(usage.KindInput); v != 0 {
+		parts = append(parts, fmt.Sprintf("input=%d", v))
+	}
+	if v := rec.Tokens.Count(usage.KindCacheRead); v != 0 {
+		parts = append(parts, fmt.Sprintf("cache_read=%d", v))
+	}
+	if v := rec.Tokens.Count(usage.KindCacheWrite); v != 0 {
+		parts = append(parts, fmt.Sprintf("cache_write=%d", v))
+	}
+	if v := rec.Tokens.TotalOutput(); v != 0 {
+		parts = append(parts, fmt.Sprintf("total_output=%d", v))
+	}
+	if v := rec.Tokens.Count(usage.KindOutput); v != 0 {
+		parts = append(parts, fmt.Sprintf("output=%d", v))
+	}
+	if v := rec.Tokens.Count(usage.KindReasoning); v != 0 {
+		parts = append(parts, fmt.Sprintf("reasoning=%d", v))
+	}
+	return parts
+}
+
+func stepUsageCostParts(rec usage.Record) []string {
+	var parts []string
+	if v := rec.Cost.Total; v != 0 {
+		parts = append(parts, fmt.Sprintf("total=%.6f", v))
+	}
+	if v := rec.Cost.Input; v != 0 {
+		parts = append(parts, fmt.Sprintf("input=%.6f", v))
+	}
+	if v := rec.Cost.CacheRead; v != 0 {
+		parts = append(parts, fmt.Sprintf("cache_read=%.6f", v))
+	}
+	if v := rec.Cost.CacheWrite; v != 0 {
+		parts = append(parts, fmt.Sprintf("cache_write=%.6f", v))
+	}
+	if v := rec.Cost.Output; v != 0 {
+		parts = append(parts, fmt.Sprintf("output=%.6f", v))
+	}
+	if v := rec.Cost.Reasoning; v != 0 {
+		parts = append(parts, fmt.Sprintf("reasoning=%.6f", v))
+	}
+	return parts
 }
 
 func printTurnUsage(w io.Writer, turnID int, rec usage.Record) {

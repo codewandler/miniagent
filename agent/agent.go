@@ -9,39 +9,40 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/codewandler/agentapis/api/unified"
+	"github.com/codewandler/agentapis/conversation"
 	"github.com/codewandler/agentcore/interfaces"
 	acoreTool "github.com/codewandler/agentcore/tool"
 	"github.com/codewandler/agentcore/tools/filesystem"
 	"github.com/codewandler/agentcore/tools/shell"
 	"github.com/codewandler/agentcore/tools/toolmgmt"
 	"github.com/codewandler/agentcore/tools/web"
-	"github.com/codewandler/llm"
-	"github.com/codewandler/llm/msg"
-	"github.com/codewandler/llm/tool"
-	"github.com/codewandler/llm/usage"
+	lpprovider "github.com/codewandler/llmproviders/provider"
+	lppricing "github.com/codewandler/llmproviders/pricing"
 	nanoid "github.com/matoous/go-nanoid/v2"
+
+	"github.com/codewandler/llm/usage"
 )
 
-// Agent runs an agentic loop: LLM → tools → LLM → tools → ...
+// Agent runs an agentic loop: model → tools → model → tools → ...
 // A single Agent instance is reused across REPL turns; conversation history
 // and usage records accumulate across turns.
 type Agent struct {
-	provider        llm.Provider
-	messages        msg.Messages
-	tracker         *usage.Tracker
-	initialMessages msg.Messages
-	toolDefs        []tool.Definition
-	allTools        []acoreTool.Tool
-	activation      *ActivationManager
-	inference       InferenceOptions
-	maxSteps        int
-	out             io.Writer
-	workspace       string
-	toolTimeout     time.Duration
-	systemOverride  string
-	sessionID       string
+	streamer       conversation.Streamer
+	session        *conversation.Session
+	tracker        *usage.Tracker
+	allTools       []acoreTool.Tool
+	activation     *ActivationManager
+	inference      InferenceOptions
+	maxSteps       int
+	out            io.Writer
+	workspace      string
+	toolTimeout    time.Duration
+	systemOverride string
+	sessionID      string
 }
 
 // Option configures the Agent.
@@ -54,8 +55,8 @@ type InferenceOption func(*InferenceOptions)
 type InferenceOptions struct {
 	Model       string
 	MaxTokens   int
-	Thinking    llm.ThinkingMode
-	Effort      llm.Effort
+	Thinking    unified.ThinkingMode
+	Effort      unified.Effort
 	Temperature float64
 }
 
@@ -64,8 +65,8 @@ func DefaultInferenceOptions() InferenceOptions {
 	return InferenceOptions{
 		Model:       "codex/gpt-5.4",
 		MaxTokens:   16_000,
-		Thinking:    llm.ThinkingOn,
-		Effort:      llm.EffortMedium,
+		Thinking:    unified.ThinkingModeOn,
+		Effort:      unified.EffortMedium,
 		Temperature: 0.1,
 	}
 }
@@ -80,40 +81,27 @@ func NewInferenceOptions(opts ...InferenceOption) InferenceOptions {
 }
 
 // WithModel sets the model alias or full path.
-func WithModel(m string) InferenceOption {
-	return func(o *InferenceOptions) { o.Model = m }
-}
+func WithModel(m string) InferenceOption { return func(o *InferenceOptions) { o.Model = m } }
 
 // WithMaxTokens sets the maximum output tokens per LLM call.
-func WithMaxTokens(n int) InferenceOption {
-	return func(o *InferenceOptions) { o.MaxTokens = n }
-}
+func WithMaxTokens(n int) InferenceOption { return func(o *InferenceOptions) { o.MaxTokens = n } }
 
 // WithThinking sets the thinking mode.
-func WithThinking(m llm.ThinkingMode) InferenceOption {
-	return func(o *InferenceOptions) { o.Thinking = m }
-}
+func WithThinking(m unified.ThinkingMode) InferenceOption { return func(o *InferenceOptions) { o.Thinking = m } }
 
 // WithEffort sets the effort level.
-func WithEffort(e llm.Effort) InferenceOption {
-	return func(o *InferenceOptions) { o.Effort = e }
-}
+func WithEffort(e unified.Effort) InferenceOption { return func(o *InferenceOptions) { o.Effort = e } }
 
 // WithTemperature sets the sampling temperature.
-func WithTemperature(t float64) InferenceOption {
-	return func(o *InferenceOptions) { o.Temperature = t }
-}
+func WithTemperature(t float64) InferenceOption { return func(o *InferenceOptions) { o.Temperature = t } }
 
 // WithInferenceOptions sets all inference options at once.
-func WithInferenceOptions(opts InferenceOptions) Option {
-	return func(a *Agent) { a.inference = opts }
-}
+func WithInferenceOptions(opts InferenceOptions) Option { return func(a *Agent) { a.inference = opts } }
 
 // WithMaxSteps sets the maximum agent loop iterations per turn (default: 30).
 func WithMaxSteps(n int) Option { return func(a *Agent) { a.maxSteps = n } }
 
 // WithOutput sets the output writer (default: os.Stdout).
-// Tests pass a *bytes.Buffer to capture and suppress output.
 func WithOutput(w io.Writer) Option { return func(a *Agent) { a.out = w } }
 
 // WithWorkspace sets the working directory (default: current working directory).
@@ -126,11 +114,10 @@ func WithToolTimeout(d time.Duration) Option { return func(a *Agent) { a.toolTim
 func WithSystemOverride(prompt string) Option { return func(a *Agent) { a.systemOverride = prompt } }
 
 // New creates an Agent. All settings are configurable via Options.
-// Defaults: workspace = cwd, toolTimeout = 30s, maxSteps = 30.
-func New(provider llm.Provider, opts ...Option) *Agent {
+func New(streamer conversation.Streamer, opts ...Option) *Agent {
 	sessionID, _ := nanoid.Generate("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", 8)
 	a := &Agent{
-		provider:    provider,
+		streamer:    streamer,
 		inference:   DefaultInferenceOptions(),
 		maxSteps:    30,
 		out:         os.Stdout,
@@ -141,7 +128,6 @@ func New(provider llm.Provider, opts ...Option) *Agent {
 		o(a)
 	}
 
-	// Resolve workspace to absolute path
 	ws := a.workspace
 	if ws == "" {
 		ws, _ = os.Getwd()
@@ -149,55 +135,42 @@ func New(provider llm.Provider, opts ...Option) *Agent {
 	ws, _ = filepath.Abs(ws)
 	a.workspace = ws
 
-	a.tracker = usage.NewTracker(
-		usage.WithCostCalculator(usage.Default()),
-	)
-
-	// System prompt with cache hint for REPL efficiency
-	prompt := BuildSystemPrompt(ws, a.systemOverride)
-	initMsg := msg.Messages{
-		msg.System(prompt).Cache(msg.CacheTTL1h).Build(),
-	}
-	a.initialMessages = initMsg
-	a.messages = initMsg
-
-	// Build agentcore tools
+	a.tracker = usage.NewTracker()
 	a.setupTools(a.workspace, a.toolTimeout)
-
+	a.initSession()
 	return a
 }
 
-// setupTools initializes all tools from agentcore packages
+func (a *Agent) initSession() {
+	prompt := BuildSystemPrompt(a.workspace, a.systemOverride)
+	caps := conversation.Capabilities{}
+	if p, ok := a.streamer.(interface{ Capabilities() lpprovider.Capabilities }); ok {
+		pc := p.Capabilities()
+		caps.SupportsResponsesPreviousResponseID = pc.SupportsResponsesPreviousResponseID
+	}
+	a.session = conversation.New(
+		a.streamer,
+		conversation.WithModel(a.inference.Model),
+		conversation.WithMaxTokens(a.inference.MaxTokens),
+		conversation.WithTemperature(a.inference.Temperature),
+		conversation.WithThinking(a.inference.Thinking),
+		conversation.WithEffort(a.inference.Effort),
+		conversation.WithSystem(prompt),
+		conversation.WithCapabilities(caps),
+	)
+}
+
+// setupTools initializes all tools from agentcore packages.
 func (a *Agent) setupTools(workspace string, toolTimeout time.Duration) {
-	// Collect all tools
 	var allTools []acoreTool.Tool
-
-	// Shell tools (bash)
-	shellTools := shell.Tools()
-	allTools = append(allTools, shellTools...)
-
-	// Filesystem tools
-	fsTools := filesystem.Tools()
-	allTools = append(allTools, fsTools...)
-
-	// Web tools (web_fetch always, web_search when a default provider is configured)
-	webTools := web.Tools(web.DefaultSearchProviderFromEnv())
-	allTools = append(allTools, webTools...)
-
+	allTools = append(allTools, shell.Tools()...)
+	allTools = append(allTools, filesystem.Tools()...)
+	allTools = append(allTools, web.Tools(web.DefaultSearchProviderFromEnv())...)
 	a.allTools = allTools
-
-	// Create activation manager
 	a.activation = NewActivationManager(allTools)
-
-	// Add toolmgmt tools now that we have the activation manager
 	tmTools := toolmgmt.Tools()
 	a.allTools = append(a.allTools, tmTools...)
 	a.activation.allTools = a.allTools
-
-	// Convert agentcore tools to llm/tool definitions
-	for _, t := range a.allTools {
-		a.toolDefs = append(a.toolDefs, convertToolDefinition(t))
-	}
 }
 
 // SessionID returns the current session identifier.
@@ -206,229 +179,233 @@ func (a *Agent) SessionID() string { return a.sessionID }
 // Tracker returns the usage tracker for session-level reporting.
 func (a *Agent) Tracker() *usage.Tracker { return a.tracker }
 
-// Out returns the output writer (for REPL to write to the same destination).
+// Out returns the output writer.
 func (a *Agent) Out() io.Writer { return a.out }
 
-// ParamsSummary returns a short human-readable summary of the active model
-// parameters for display before the REPL prompt.
+// ParamsSummary returns a short human-readable summary of the active model parameters.
 func (a *Agent) ParamsSummary() string {
 	return fmt.Sprintf("model: %s  thinking: %s  effort: %s", a.inference.Model, a.inference.Thinking, a.inference.Effort)
 }
 
-// Reset clears conversation history back to the initial system prompt,
-// starts a fresh usage tracker, and generates a new session ID.
-// Called by the REPL /new command.
+// Reset clears conversation history, usage tracker, and generates a new session ID.
 func (a *Agent) Reset() {
-	a.messages = a.initialMessages
-	a.tracker = usage.NewTracker(usage.WithCostCalculator(usage.Default()))
+	a.session.Reset()
+	a.tracker.Reset()
 	a.sessionID, _ = nanoid.Generate("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", 8)
 }
 
-// ErrMaxStepsReached is returned by RunTurn when the step loop is exhausted
-// before the model produced a tool-free response. Partial output may have been
-// produced. Callers can inspect this with errors.Is.
+// ErrMaxStepsReached is returned by RunTurn when the step loop is exhausted.
 var ErrMaxStepsReached = errors.New("maximum steps reached — task may be incomplete")
 
-// RunTurn executes one REPL turn (or one-shot task). Appends a user message,
-// runs the step loop, and returns nil on success.
+// RunTurn executes one REPL turn (or one-shot task).
 func (a *Agent) RunTurn(ctx context.Context, turnID int, task string) error {
-	// Snapshot for rollback on error (see DESIGN §History rollback)
-	snapshot := len(a.messages)
-	rollback := func() { a.messages = a.messages[:snapshot] }
-
-	a.messages = a.messages.Append(msg.User(task).Build())
+	req := conversation.NewRequest().
+		MaxTokens(a.inference.MaxTokens).
+		Temperature(a.inference.Temperature).
+		Thinking(a.inference.Thinking).
+		Effort(a.inference.Effort).
+		Tools(a.activeToolSpecs()).
+		ToolChoice(unified.ToolChoiceAuto{}).
+		User(task).
+		Build()
 
 	var stepsCompleted int
-
 	for step := 1; step <= a.maxSteps; step++ {
-		// runStep returns (done, error) — no errContinue sentinel.
-		done, err := a.runStep(ctx, turnID, step, &stepsCompleted)
+		nextReq, done, err := a.runStep(ctx, turnID, step, &stepsCompleted, req)
 		if err != nil {
-			// always rollback inside the loop.
-			// Every error from runStep leaves history in an invalid
-			// alternating-role state. errMaxStepsReached is only
-			// returned AFTER the loop (no rollback needed there).
-			rollback()
 			return err
 		}
 		if done {
 			if stepsCompleted > 1 {
-				turnRec := a.aggregateTurn(turnID)
-				printTurnUsage(a.out, turnID, turnRec)
+				printTurnUsage(a.out, turnID, a.aggregateTurn(turnID))
 			}
 			return nil
 		}
-		// done=false, err=nil → model called tools, continue to next step
+		req = nextReq
 	}
-
-	// Loop exhausted — no rollback (history ends with assistant message = valid state)
 	if stepsCompleted > 1 {
-		turnRec := a.aggregateTurn(turnID)
-		printTurnUsage(a.out, turnID, turnRec)
+		printTurnUsage(a.out, turnID, a.aggregateTurn(turnID))
 	}
 	return ErrMaxStepsReached
 }
 
-// runStep executes one LLM call → tool dispatch cycle. Returns:
-//   - (true, nil):   turn completed (StopReasonEndTurn or StopReasonMaxTokens)
-//   - (false, nil):  model called tools, continue to next step
-//   - (_, error):    error — caller should rollback
-func (a *Agent) runStep(
-	ctx context.Context,
-	turnID int,
-	step int,
-	stepsCompleted *int,
-) (done bool, err error) {
+func (a *Agent) runStep(ctx context.Context, turnID, step int, stepsCompleted *int, req conversation.Request) (conversation.Request, bool, error) {
 	printStepHeader(a.out, step, a.maxSteps)
-
-	// Pass *RequestBuilder directly — it implements Buildable.
-	// Provider calls BuildRequest() internally (validates + returns Request).
-	// For multi-step turns, add a cache hint to the last accumulated message so
-	// the growing conversation history is progressively cached. Anthropic and
-	// Bedrock place a cache breakpoint at this position on the wire; on the first
-	// step (only system + user present) the system prompt hint already handles it.
-	messages := a.messages
-	if n := len(messages); n > 1 && messages[n-1].CacheHint == nil {
-		cp := make(msg.Messages, n)
-		copy(cp, messages)
-		cp[n-1].CacheHint = msg.NewCacheHint(msg.CacheTTL5m)
-		messages = cp
-	}
-
-	rb := llm.NewRequestBuilder().
-		Model(a.inference.Model).
-		MaxTokens(a.inference.MaxTokens).
-		Thinking(a.inference.Thinking).
-		Effort(a.inference.Effort).
-		Temperature(a.inference.Temperature).
-		Append(messages...).
-		Tools(a.toolDefs...)
-
-	if hint := llm.SynthesizeRequestCacheHint(messages); hint != nil {
-		rb.Cache(llm.CacheTTL(hint.TTL))
-	}
-
-	stream, err := a.provider.CreateStream(ctx, rb)
+	stream, err := a.session.Request(ctx, req)
 	if err != nil {
-		return false, fmt.Errorf("create stream: %w", err)
+		return conversation.Request{}, false, fmt.Errorf("request conversation stream: %w", err)
 	}
-
-	// ── Stream processing with live callbacks ──
 
 	sd := newStepDisplay(a.out)
+	var toolCalls []unified.ToolCall
 	var stepUsage usage.Record
-	printedResolvedModel := false
-
-	// Create tool handlers for all agentcore tools
-	toolHandlers := a.createToolHandlers()
-
-	result := llm.NewEventProcessor(ctx, stream).
-		OnEvent(llm.TypedEventHandler[*llm.StreamStartedEvent](func(ev *llm.StreamStartedEvent) {
-			if !printedResolvedModel && ev.Model != "" {
-				printResolvedModel(a.out, ev.Model)
-				printedResolvedModel = true
-			}
-		})).
-		OnEvent(llm.TypedEventHandler[*llm.ModelResolvedEvent](func(ev *llm.ModelResolvedEvent) {
-			if !printedResolvedModel && ev.Resolved != "" {
-				printResolvedModel(a.out, ev.Resolved)
-				printedResolvedModel = true
-			}
-		})).
-		OnReasoningDelta(func(chunk string) {
-			sd.WriteReasoning(chunk)
-		}).
-		OnTextDelta(func(chunk string) {
-			sd.WriteText(chunk)
-		}).
-		OnEvent(llm.TypedEventHandler[*llm.ToolCallEvent](func(ev *llm.ToolCallEvent) {
-			tc := ev.ToolCall
-			sd.PrintToolCall(tc.ToolName(), tc.ToolArgs())
-		})).
-		OnEvent(llm.TypedEventHandler[*llm.UsageUpdatedEvent](func(ev *llm.UsageUpdatedEvent) {
-			rec := ev.Record
-			rec.Dims.TurnID = strconv.Itoa(turnID)
+	var sawCompleted bool
+	var stopReason unified.StopReason
+	for ev := range stream {
+		switch e := ev.(type) {
+		case conversation.TextDeltaEvent:
+			sd.WriteText(e.Text)
+		case conversation.ReasoningDeltaEvent:
+			sd.WriteReasoning(e.Text)
+		case conversation.ToolCallEvent:
+			toolCalls = append(toolCalls, e.ToolCall)
+			sd.PrintToolCall(e.ToolCall.Name, e.ToolCall.Args)
+		case conversation.UsageEvent:
+			rec := a.recordTransportUsage(turnID, e.Usage)
 			a.tracker.Record(rec)
-			stepUsage = rec
-		})).
-		HandleTool(toolHandlers...).
-		Result()
-
-	sd.End()
-
-	// ── Display tool results ──
-	for _, tr := range result.ToolResults() {
-		output := extractBashOutput(tr.ToolOutput())
-		printToolResult(a.out, output, tr.IsError())
-	}
-
-	// ── Per-step usage ──
-
-	printStepUsage(a.out, step, stepUsage, "")
-
-	// ── Branch on stop reason (error paths return before appending to history) ──
-
-	switch result.StopReason() {
-	case llm.StopReasonCancelled:
-		return false, context.Canceled
-
-	case llm.StopReasonError:
-		if rerr := result.Error(); rerr != nil {
-			return false, rerr
+			stepUsage = mergeUsageRecord(stepUsage, rec)
+		case conversation.CompletedEvent:
+			sawCompleted = true
+			stopReason = e.StopReason
+		case conversation.ErrorEvent:
+			sd.End()
+			if e.Err != nil {
+				return conversation.Request{}, false, e.Err
+			}
+			return conversation.Request{}, false, errors.New("stream error")
 		}
-		return false, errors.New("stream error")
 	}
-
-	// ── Append to conversation history (success and tool-use paths only) ──
-
-	a.messages = a.messages.Append(result.Next())
+	sd.End()
+	if ctx.Err() != nil {
+		return conversation.Request{}, false, ctx.Err()
+	}
+	printStepUsage(a.out, step, stepUsage, "")
+	if !sawCompleted {
+		return conversation.Request{}, false, errors.New("stream error")
+	}
 	*stepsCompleted++
-
-	switch result.StopReason() {
-	case llm.StopReasonToolUse:
-		return false, nil // continue to next step
-
-	case llm.StopReasonMaxTokens:
-		fmt.Fprintf(a.out, "\n%s⚠ model hit output token limit%s\n", ansiBrightYellow, ansiReset)
-		return true, nil // partial but usable
-
-	default: // StopReasonEndTurn and others
-		return true, nil // success
+	if len(toolCalls) == 0 {
+		if stopReason == unified.StopReasonMaxTokens {
+			fmt.Fprintf(a.out, "\n%s⚠ model hit output token limit%s\n", ansiBrightYellow, ansiReset)
+		}
+		return conversation.Request{}, true, nil
 	}
+	followup := conversation.NewRequest().
+		MaxTokens(a.inference.MaxTokens).
+		Temperature(a.inference.Temperature).
+		Thinking(a.inference.Thinking).
+		Effort(a.inference.Effort).
+		Tools(a.activeToolSpecs()).
+		ToolChoice(unified.ToolChoiceAuto{})
+	for _, tc := range toolCalls {
+		output, isError := a.executeTool(ctx, tc)
+		printToolResult(a.out, output, isError)
+		followup.ToolResult(tc.ID, output)
+	}
+	return followup.Build(), false, nil
 }
 
-// createToolHandlers creates handlers for all agentcore tools
-func (a *Agent) createToolHandlers() []tool.NamedHandler {
-	var handlers []tool.NamedHandler
-
-	for _, t := range a.allTools {
-		toolCopy := t // capture for closure
-		handlers = append(handlers, tool.NewHandler[json.RawMessage, interface{}](
-			toolCopy.Name(),
-			func(ctx context.Context, input json.RawMessage) (*interface{}, error) {
-				// Create agentcore context with activation state, wrapping the caller's ctx
-				toolCtx := &agentcoreToolContext{
-					ctx:        ctx,
-					workspace:  a.workspace,
-					activation: a.activation,
-					extra:      make(map[string]interface{}),
-				}
-				toolCtx.extra[toolmgmt.KeyActivationState] = a.activation
-
-				// Execute the agentcore tool
-				result, err := toolCopy.Execute(toolCtx, input)
-				if err != nil {
-					return nil, err
-				}
-
-				// Convert result to interface{} and return as pointer
-				output := interface{}(result.String())
-				return &output, nil
-			},
-		))
+func (a *Agent) executeTool(ctx context.Context, tc unified.ToolCall) (string, bool) {
+	for _, t := range a.activation.ActiveTools() {
+		if t.Name() != tc.Name {
+			continue
+		}
+		input, _ := json.Marshal(tc.Args)
+		toolCtx := &agentcoreToolContext{ctx: ctx, workspace: a.workspace, activation: a.activation, extra: make(map[string]any), sessionID: a.sessionID}
+		toolCtx.extra[toolmgmt.KeyActivationState] = a.activation
+		result, err := t.Execute(toolCtx, input)
+		if err != nil {
+			return err.Error(), true
+		}
+		return result.String(), result.IsError()
 	}
+	return fmt.Sprintf("tool not found: %s", tc.Name), true
+}
 
-	return handlers
+func (a *Agent) activeToolSpecs() []unified.Tool {
+	active := a.activation.ActiveTools()
+	out := make([]unified.Tool, 0, len(active))
+	for _, t := range active {
+		out = append(out, convertUnifiedToolDefinition(t))
+	}
+	return out
+}
+
+func (a *Agent) recordTransportUsage(turnID int, u unified.StreamUsage) usage.Record {
+	providerName, modelName := a.providerAndModel(u)
+	items := unifiedToUsageTokens(u.Tokens)
+	rec := usage.Record{
+		Tokens: items,
+		Dims: usage.Dims{
+			Provider:  providerName,
+			Model:     modelName,
+			RequestID: u.RequestID,
+			TurnID:    strconv.Itoa(turnID),
+			SessionID: a.sessionID,
+		},
+		RecordedAt: time.Now(),
+	}
+	if p, ok := lppricing.Lookup(providerName, modelName); ok {
+		rec.Cost.Total = lppricing.EstimateCost(u, p)
+		rec.Cost.Source = "calculated"
+	}
+	return rec
+}
+
+func (a *Agent) providerAndModel(u unified.StreamUsage) (string, string) {
+	providerName := ""
+	model := a.inference.Model
+	if named, ok := a.streamer.(interface{ Name() string }); ok {
+		providerName = named.Name()
+	}
+	if providerName == "" && strings.Contains(model, "/") {
+		parts := strings.SplitN(model, "/", 2)
+		providerName, model = parts[0], parts[1]
+	}
+	if providerName != "" && strings.HasPrefix(model, providerName+"/") {
+		model = strings.TrimPrefix(model, providerName+"/")
+	}
+	return providerName, model
+}
+
+func unifiedToUsageTokens(items unified.TokenItems) usage.TokenItems {
+	var out usage.TokenItems
+	for _, item := range items {
+		switch item.Kind {
+		case unified.TokenKindInputNew:
+			out = append(out, usage.TokenItem{Kind: usage.KindInput, Count: item.Count})
+		case unified.TokenKindInputCacheRead:
+			out = append(out, usage.TokenItem{Kind: usage.KindCacheRead, Count: item.Count})
+		case unified.TokenKindInputCacheWrite:
+			out = append(out, usage.TokenItem{Kind: usage.KindCacheWrite, Count: item.Count})
+		case unified.TokenKindOutput:
+			out = append(out, usage.TokenItem{Kind: usage.KindOutput, Count: item.Count})
+		case unified.TokenKindOutputReasoning:
+			out = append(out, usage.TokenItem{Kind: usage.KindReasoning, Count: item.Count})
+		}
+	}
+	return out.NonZero()
+}
+
+func mergeUsageRecord(dst, src usage.Record) usage.Record {
+	if dst.RecordedAt.IsZero() {
+		dst.RecordedAt = src.RecordedAt
+	}
+	counts := map[usage.TokenKind]int{}
+	for _, r := range []usage.Record{dst, src} {
+		for _, item := range r.Tokens {
+			counts[item.Kind] += item.Count
+		}
+		dst.Cost.Total += r.Cost.Total
+		dst.Cost.Input += r.Cost.Input
+		dst.Cost.Output += r.Cost.Output
+		dst.Cost.Reasoning += r.Cost.Reasoning
+		dst.Cost.CacheRead += r.Cost.CacheRead
+		dst.Cost.CacheWrite += r.Cost.CacheWrite
+		if dst.Cost.Source == "" {
+			dst.Cost.Source = r.Cost.Source
+		}
+		if dst.Dims.Provider == "" {
+			dst.Dims = r.Dims
+		}
+	}
+	dst.Tokens = nil
+	for kind, count := range counts {
+		if count > 0 {
+			dst.Tokens = append(dst.Tokens, usage.TokenItem{Kind: kind, Count: count})
+		}
+	}
+	return dst
 }
 
 // aggregateTurn sums all usage records for a given turn ID.
@@ -453,77 +430,29 @@ func (a *Agent) aggregateTurn(turnID int) usage.Record {
 	return agg
 }
 
-// convertToolDefinition converts an agentcore tool to an llm/tool Definition
-func convertToolDefinition(t acoreTool.Tool) tool.Definition {
-	// Get the schema from the agentcore tool and convert it to map[string]any
+func convertUnifiedToolDefinition(t acoreTool.Tool) unified.Tool {
 	schema := t.Schema()
-
-	// Marshal and unmarshal to get clean map[string]any
 	raw, _ := json.Marshal(schema)
 	var params map[string]any
 	_ = json.Unmarshal(raw, &params)
-
-	// Clean up metadata fields
 	delete(params, "$schema")
 	delete(params, "$id")
-
-	return tool.Definition{
-		Name:        t.Name(),
-		Description: t.Description(),
-		Parameters:  params,
-	}
+	return unified.Tool{Name: t.Name(), Description: t.Description(), Parameters: params, Strict: true}
 }
 
-// agentcoreToolContext implements acoreTool.Ctx for agentcore tools
 type agentcoreToolContext struct {
 	ctx        context.Context
 	workspace  string
 	activation interfaces.ActivationState
-	extra      map[string]interface{}
+	extra      map[string]any
+	sessionID  string
 }
 
-func (c *agentcoreToolContext) WorkDir() string {
-	return c.workspace
-}
-
-func (c *agentcoreToolContext) Extra() map[string]interface{} {
-	return c.extra
-}
-
-// Deadline and Done implement context.Context
-func (c *agentcoreToolContext) Deadline() (time.Time, bool) {
-	if c.ctx == nil {
-		return time.Time{}, false
-	}
-	return c.ctx.Deadline()
-}
-
-func (c *agentcoreToolContext) Done() <-chan struct{} {
-	if c.ctx == nil {
-		return nil
-	}
-	return c.ctx.Done()
-}
-
-func (c *agentcoreToolContext) Err() error {
-	if c.ctx == nil {
-		return nil
-	}
-	return c.ctx.Err()
-}
-
-func (c *agentcoreToolContext) Value(key interface{}) interface{} {
-	if c.ctx == nil {
-		return nil
-	}
-	return c.ctx.Value(key)
-}
-
-// AgentID and SessionID implement agentcore/tool.Ctx
-func (c *agentcoreToolContext) AgentID() string {
-	return ""
-}
-
-func (c *agentcoreToolContext) SessionID() string {
-	return ""
-}
+func (c *agentcoreToolContext) WorkDir() string                 { return c.workspace }
+func (c *agentcoreToolContext) Extra() map[string]any           { return c.extra }
+func (c *agentcoreToolContext) Deadline() (time.Time, bool)     { if c.ctx == nil { return time.Time{}, false }; return c.ctx.Deadline() }
+func (c *agentcoreToolContext) Done() <-chan struct{}           { if c.ctx == nil { return nil }; return c.ctx.Done() }
+func (c *agentcoreToolContext) Err() error                      { if c.ctx == nil { return nil }; return c.ctx.Err() }
+func (c *agentcoreToolContext) Value(key any) any               { if c.ctx == nil { return nil }; return c.ctx.Value(key) }
+func (c *agentcoreToolContext) AgentID() string                 { return "" }
+func (c *agentcoreToolContext) SessionID() string               { return c.sessionID }

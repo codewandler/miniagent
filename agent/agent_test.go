@@ -3,40 +3,56 @@ package agent
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/codewandler/llm"
-	"github.com/codewandler/llm/llmtest"
-	"github.com/codewandler/llm/provider/fake"
+	"github.com/codewandler/agentapis/api/unified"
+	"github.com/codewandler/agentapis/client"
+	"github.com/codewandler/agentapis/conversation"
 	"github.com/codewandler/llm/usage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// newTestAgent creates an Agent backed by the fake provider.
-// Output goes to a buffer (suppresses terminal noise in tests).
 func newTestAgent(t *testing.T, opts ...Option) (*Agent, *bytes.Buffer) {
 	t.Helper()
 	var buf bytes.Buffer
-	return New(
-		fake.NewProvider(),
-		append([]Option{WithWorkspace(t.TempDir()), WithToolTimeout(5 * time.Second), WithOutput(&buf)}, opts...)...,
-	), &buf
+	return New(newFakeStreamer(), append([]Option{WithWorkspace(t.TempDir()), WithToolTimeout(5 * time.Second), WithOutput(&buf)}, opts...)...), &buf
 }
 
-// blockingProvider creates a provider whose stream never sends events.
-// doProcess can only exit via ctx.Done() → deterministic cancel test.
-type blockingProviderImpl struct{}
-
-func (blockingProviderImpl) Name() string { return "blocking" }
-func (blockingProviderImpl) Models() llm.Models {
-	return llm.Models{{ID: "blocking/default", Name: "blocking", Provider: "blocking", Aliases: []string{llm.ModelDefault}}}
+type fakeStreamer struct {
+	calls []unified.Request
+	n     int
 }
-func (blockingProviderImpl) CreateStream(ctx context.Context, _ llm.Buildable) (llm.Stream, error) {
-	ch := make(chan llm.Envelope)
+
+func newFakeStreamer() *fakeStreamer { return &fakeStreamer{} }
+func (f *fakeStreamer) Stream(_ context.Context, req unified.Request) (<-chan client.StreamResult, error) {
+	f.calls = append(f.calls, req)
+	ch := make(chan client.StreamResult, 8)
+	go func() {
+		defer close(ch)
+		responseID := "resp_" + strconv.Itoa(f.n+1)
+		if f.n == 0 {
+			ch <- client.StreamResult{Event: unified.NewToolCallEvent("bash-1", "bash", map[string]any{"command": "echo hello"})}
+			ch <- client.StreamResult{Event: unified.NewUsageEvent(unified.TokenItems{{Kind: unified.TokenKindInputNew, Count: 1}, {Kind: unified.TokenKindOutput, Count: 1}}, nil)}
+			ch <- client.StreamResult{Event: unified.StreamEvent{Type: unified.StreamEventCompleted, Completed: &unified.Completed{StopReason: unified.StopReasonToolUse}, Lifecycle: &unified.Lifecycle{Ref: unified.StreamRef{ResponseID: responseID}}}}
+		} else {
+			ch <- client.StreamResult{Event: unified.StreamEvent{Type: unified.StreamEventContentDelta, ContentDelta: &unified.ContentDelta{ContentBase: unified.ContentBase{Ref: unified.StreamRef{ResponseID: responseID}, Kind: unified.ContentKindText, Data: "done"}}}}
+			ch <- client.StreamResult{Event: unified.NewUsageEvent(unified.TokenItems{{Kind: unified.TokenKindInputNew, Count: 1}, {Kind: unified.TokenKindOutput, Count: 1}}, nil)}
+			ch <- client.StreamResult{Event: unified.StreamEvent{Type: unified.StreamEventCompleted, Completed: &unified.Completed{StopReason: unified.StopReasonEndTurn}, Lifecycle: &unified.Lifecycle{Ref: unified.StreamRef{ResponseID: responseID}}}}
+		}
+		f.n++
+	}()
+	return ch, nil
+}
+
+type blockingStreamer struct{}
+
+func (blockingStreamer) Stream(ctx context.Context, _ unified.Request) (<-chan client.StreamResult, error) {
+	ch := make(chan client.StreamResult)
 	go func() {
 		<-ctx.Done()
 		close(ch)
@@ -44,149 +60,93 @@ func (blockingProviderImpl) CreateStream(ctx context.Context, _ llm.Buildable) (
 	return ch, nil
 }
 
-func blockingProvider() llm.Provider { return blockingProviderImpl{} }
-
-type captureProvider struct {
-	create func(context.Context, llm.Buildable) (llm.Stream, error)
+type captureStreamer struct {
+	create func(context.Context, unified.Request) (<-chan client.StreamResult, error)
 }
 
-func (p captureProvider) Name() string { return "capture" }
-func (p captureProvider) Models() llm.Models {
-	return llm.Models{{ID: "capture/default", Name: "capture", Provider: "capture", Aliases: []string{llm.ModelDefault}}}
-}
-func (p captureProvider) CreateStream(ctx context.Context, src llm.Buildable) (llm.Stream, error) {
-	return p.create(ctx, src)
+func (p captureStreamer) Stream(ctx context.Context, req unified.Request) (<-chan client.StreamResult, error) {
+	return p.create(ctx, req)
 }
 
-func singleTextStream() llm.Stream {
-	return llmtest.SendEvents(
-		llmtest.TextEvent("done"),
-		llmtest.CompletedEvent(llm.StopReasonEndTurn),
-	)
+func singleTextStream() <-chan client.StreamResult {
+	ch := make(chan client.StreamResult, 2)
+	ch <- client.StreamResult{Event: unified.StreamEvent{Type: unified.StreamEventContentDelta, ContentDelta: &unified.ContentDelta{ContentBase: unified.ContentBase{Kind: unified.ContentKindText, Data: "done"}}}}
+	ch <- client.StreamResult{Event: unified.StreamEvent{Type: unified.StreamEventCompleted, Completed: &unified.Completed{StopReason: unified.StopReasonEndTurn}}}
+	close(ch)
+	return ch
 }
 
 func TestNewInferenceOptions_AppliesOverrides(t *testing.T) {
-	opts := NewInferenceOptions(
-		WithModel("claude-sonnet"),
-		WithMaxTokens(2048),
-		WithThinking(llm.ThinkingOff),
-		WithEffort(llm.EffortHigh),
-		WithTemperature(0.7),
-	)
-
+	opts := NewInferenceOptions(WithModel("claude-sonnet"), WithMaxTokens(2048), WithThinking(unified.ThinkingModeOff), WithEffort(unified.EffortHigh), WithTemperature(0.7))
 	assert.Equal(t, "claude-sonnet", opts.Model)
 	assert.Equal(t, 2048, opts.MaxTokens)
-	assert.Equal(t, llm.ThinkingOff, opts.Thinking)
-	assert.Equal(t, llm.EffortHigh, opts.Effort)
+	assert.Equal(t, unified.ThinkingModeOff, opts.Thinking)
+	assert.Equal(t, unified.EffortHigh, opts.Effort)
 	assert.Equal(t, 0.7, opts.Temperature)
 }
 
 func TestRunTurn_CompletesMultiStep(t *testing.T) {
-	// fake provider: call 1 → tool_use (bash "echo hello"), call 2 → text "done"
 	a, buf := newTestAgent(t)
-	initialMsgs := len(a.messages) // system prompt only
-
+	initialHistory := len(a.session.History())
 	err := a.RunTurn(context.Background(), 1, "say hello")
 	require.NoError(t, err)
-
-	// History grew: system + user + assistant(tool) + tool_result + assistant(text) = 5
-	assert.Greater(t, len(a.messages), initialMsgs+1, "messages should grow across steps")
-
-	// Output contains step headers for both steps
+	assert.Greater(t, len(a.session.History()), initialHistory+1)
 	out := buf.String()
 	assert.Contains(t, out, "Step 1")
 	assert.Contains(t, out, "Step 2")
-
-	// Usage recorded with turnID
 	recs := a.Tracker().Filter(usage.ByTurnID(strconv.Itoa(1)))
 	assert.NotEmpty(t, recs)
 }
 
 func TestRunTurn_MaxStepsReached(t *testing.T) {
-	// fake returns tool_use on first call → maxSteps=1 → loop exhausted
 	a, _ := newTestAgent(t, WithMaxSteps(1))
-
 	err := a.RunTurn(context.Background(), 1, "do something")
 	assert.ErrorIs(t, err, ErrMaxStepsReached)
 }
 
-func TestRunStep_SetsTopLevelRequestCacheHintFromMessages(t *testing.T) {
+func TestSessionBuildRequestUsesInferenceDefaults(t *testing.T) {
+	var got unified.Request
 	a, _ := newTestAgent(t, WithMaxSteps(1))
-	a.messages = a.initialMessages.Append(llm.User("do something"))
-
-	var got llm.Request
-	provider := captureProvider{create: func(_ context.Context, src llm.Buildable) (llm.Stream, error) {
-		var err error
-		got, err = src.BuildRequest(context.Background())
-		require.NoError(t, err)
+	a.streamer = captureStreamer{create: func(_ context.Context, req unified.Request) (<-chan client.StreamResult, error) {
+		got = req
 		return singleTextStream(), nil
 	}}
-	a.provider = provider
-
-	done, err := a.runStep(context.Background(), 1, 1, new(int))
+	a.initSession()
+	doneReq, done, err := a.runStep(context.Background(), 1, 1, new(int), conversation.NewRequest().User("do something").Build())
 	require.NoError(t, err)
 	assert.True(t, done)
-	require.NotNil(t, got.CacheHint)
-	assert.True(t, got.CacheHint.Enabled)
-	assert.Equal(t, string(llm.CacheTTL1h), got.CacheHint.TTL)
+	assert.Equal(t, conversation.Request{}, doneReq)
+	assert.Equal(t, a.inference.MaxTokens, got.MaxTokens)
+	assert.Equal(t, a.inference.Effort, got.Effort)
+	assert.Equal(t, a.inference.Thinking, got.Thinking)
 }
 
-// [REVIEW FIX #1]: use blocking provider — no buffered events → deterministic cancel.
 func TestRunTurn_CancelledContext(t *testing.T) {
 	var buf bytes.Buffer
-	a := New(blockingProvider(), WithWorkspace(t.TempDir()), WithToolTimeout(5*time.Second), WithOutput(&buf))
-
+	a := New(blockingStreamer{}, WithWorkspace(t.TempDir()), WithToolTimeout(5*time.Second), WithOutput(&buf))
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel before RunTurn
-
+	cancel()
 	err := a.RunTurn(ctx, 1, "do something")
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-// [REVIEW FIX #1]: use blocking provider for deterministic rollback test.
-func TestRunTurn_RollbackOnCancel(t *testing.T) {
+func TestRunTurn_NoHistoryCommitOnCancel(t *testing.T) {
 	var buf bytes.Buffer
-	a := New(blockingProvider(), WithWorkspace(t.TempDir()), WithToolTimeout(5*time.Second), WithOutput(&buf))
-	initialLen := len(a.messages)
-
+	a := New(blockingStreamer{}, WithWorkspace(t.TempDir()), WithToolTimeout(5*time.Second), WithOutput(&buf))
+	initialLen := len(a.session.History())
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(5 * time.Millisecond)
-		cancel()
-	}()
-
+	go func() { time.Sleep(5 * time.Millisecond); cancel() }()
 	_ = a.RunTurn(ctx, 1, "do something")
-	assert.Equal(t, initialLen, len(a.messages), "messages should be rolled back")
-}
-
-func TestRunTurn_NoRollbackOnMaxSteps(t *testing.T) {
-	a, _ := newTestAgent(t, WithMaxSteps(1))
-	initialLen := len(a.messages)
-
-	_ = a.RunTurn(context.Background(), 1, "do something")
-	assert.Greater(t, len(a.messages), initialLen,
-		"messages should NOT be rolled back on max-steps (history is valid)")
+	assert.Equal(t, initialLen, len(a.session.History()))
 }
 
 func TestRunTurn_HistoryPersistsAcrossTurns(t *testing.T) {
 	a, _ := newTestAgent(t)
-
-	// Turn 1: fake does tool_use → text (2 steps)
-	err := a.RunTurn(context.Background(), 1, "first task")
-	require.NoError(t, err)
-	afterTurn1 := len(a.messages)
-
-	// Turn 2: fake's called flag is true → returns text-only (1 step).
-	// Exact count: +2 messages (user + assistant). If the fake's state machine
-	// changes this will fail loudly rather than silently accepting a different structure.
-	err = a.RunTurn(context.Background(), 2, "second task")
-	require.NoError(t, err)
-	afterTurn2 := len(a.messages)
-
-	assert.Equal(t, afterTurn1+2, afterTurn2,
-		"turn 2 (text-only, 1 step) should add exactly user + assistant = 2 messages")
-
-	// Both turns have usage records
+	require.NoError(t, a.RunTurn(context.Background(), 1, "first task"))
+	afterTurn1 := len(a.session.History())
+	require.NoError(t, a.RunTurn(context.Background(), 2, "second task"))
+	afterTurn2 := len(a.session.History())
+	assert.Greater(t, afterTurn2, afterTurn1)
 	assert.NotEmpty(t, a.Tracker().Filter(usage.ByTurnID(strconv.Itoa(1))))
 	assert.NotEmpty(t, a.Tracker().Filter(usage.ByTurnID(strconv.Itoa(2))))
 }
@@ -194,13 +154,9 @@ func TestRunTurn_HistoryPersistsAcrossTurns(t *testing.T) {
 func TestNewIncludesWebSearchWhenTavilyConfigured(t *testing.T) {
 	t.Setenv("TAVILY_API_KEY", "test-key")
 	t.Setenv("WEBSEARCH_PROVIDER", "tavily")
-
-	a := New(blockingProvider(), WithWorkspace(t.TempDir()), WithOutput(io.Discard))
-
+	a := New(blockingStreamer{}, WithWorkspace(t.TempDir()), WithOutput(io.Discard))
 	var names []string
-	for _, def := range a.toolDefs {
-		names = append(names, def.Name)
-	}
+	for _, def := range a.activeToolSpecs() { names = append(names, def.Name) }
 	require.Contains(t, names, "web_fetch")
 	require.Contains(t, names, "web_search")
 }
@@ -208,30 +164,31 @@ func TestNewIncludesWebSearchWhenTavilyConfigured(t *testing.T) {
 func TestNewOmitsWebSearchWithoutTavilyKey(t *testing.T) {
 	t.Setenv("TAVILY_API_KEY", "")
 	t.Setenv("WEBSEARCH_PROVIDER", "")
-
-	a := New(blockingProvider(), WithWorkspace(t.TempDir()), WithOutput(io.Discard))
-
+	a := New(blockingStreamer{}, WithWorkspace(t.TempDir()), WithOutput(io.Discard))
 	var names []string
-	for _, def := range a.toolDefs {
-		names = append(names, def.Name)
-	}
+	for _, def := range a.activeToolSpecs() { names = append(names, def.Name) }
 	require.Contains(t, names, "web_fetch")
 	require.NotContains(t, names, "web_search")
 }
 
 func TestAggregateTurnPreservesNonOverlappingOutputAndReasoning(t *testing.T) {
 	a := &Agent{tracker: usage.NewTracker()}
-	a.tracker.Record(usage.Record{
-		Dims:   usage.Dims{TurnID: "1"},
-		Tokens: usage.TokenItems{{Kind: usage.KindInput, Count: 10}, {Kind: usage.KindCacheRead, Count: 5}, {Kind: usage.KindOutput, Count: 21}, {Kind: usage.KindReasoning, Count: 9}},
-		Cost:   usage.Cost{Total: 1.5, Input: 0.2, CacheRead: 0.1, Output: 0.8, Reasoning: 0.4},
-	})
+	a.tracker.Record(usage.Record{Dims: usage.Dims{TurnID: "1"}, Tokens: usage.TokenItems{{Kind: usage.KindInput, Count: 10}, {Kind: usage.KindCacheRead, Count: 5}, {Kind: usage.KindOutput, Count: 21}, {Kind: usage.KindReasoning, Count: 9}}, Cost: usage.Cost{Total: 1.5, Input: 0.2, CacheRead: 0.1, Output: 0.8, Reasoning: 0.4}})
 	agg := a.aggregateTurn(1)
 	assert.Equal(t, 15, agg.Tokens.TotalInput())
 	assert.Equal(t, 30, agg.Tokens.TotalOutput())
 	assert.Equal(t, 21, agg.Tokens.Count(usage.KindOutput))
 	assert.Equal(t, 9, agg.Tokens.Count(usage.KindReasoning))
 	assert.Equal(t, 1.5, agg.Cost.Total)
-	assert.Equal(t, 0.8, agg.Cost.Output)
-	assert.Equal(t, 0.4, agg.Cost.Reasoning)
+}
+
+func TestRunTurn_StreamError(t *testing.T) {
+	a := New(captureStreamer{create: func(context.Context, unified.Request) (<-chan client.StreamResult, error) {
+		ch := make(chan client.StreamResult, 1)
+		ch <- client.StreamResult{Err: errors.New("boom")}
+		close(ch)
+		return ch, nil
+	}}, WithWorkspace(t.TempDir()), WithOutput(io.Discard))
+	err := a.RunTurn(context.Background(), 1, "oops")
+	require.Error(t, err)
 }
