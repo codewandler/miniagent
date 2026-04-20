@@ -68,6 +68,7 @@ tasks:
           --tmpfs /tmp:rw,nosuid,exec,size=512m \
           --tmpfs /root:rw,nosuid,noexec,size=32m \
           -u "${USER_UID}:${USER_GID}" \
+          -v "$HOME/.codex:/tmp/.codex:ro" \
           -v "{{.REPO_ROOT}}:/repo" \
           -e HOME=/tmp \
           -e GOCACHE=/repo/.go-cache/build \
@@ -80,6 +81,37 @@ tasks:
           -e OPENROUTER_API_KEY \
           {{.IMAGE}} \
           /repo/external_bench/swebench/scripts/bench_swe.sh {{.CLI_ARGS}}
+
+  # ── bench:swe:agent:go ─────────────────────────────────────────────────────
+  bench:swe:agent:go:
+    desc: "Run the Go-centric SWE benchmark set with the live agent driver"
+    deps: [build]
+    cmds:
+      - |
+        mkdir -p .go-cache/build .go-cache/mod
+        USER_UID=$(id -u)
+        USER_GID=$(id -g)
+        docker run --rm -i \
+          --security-opt no-new-privileges \
+          --cap-drop ALL \
+          --read-only \
+          --tmpfs /tmp:rw,nosuid,exec,size=512m \
+          --tmpfs /root:rw,nosuid,noexec,size=32m \
+          -u "${USER_UID}:${USER_GID}" \
+          -v "$HOME/.codex:/tmp/.codex:ro" \
+          -v "{{.REPO_ROOT}}:/repo" \
+          -e HOME=/tmp \
+          -e GOCACHE=/repo/.go-cache/build \
+          -e GOMODCACHE=/repo/.go-cache/mod \
+          -e GOTOOLCHAIN=local \
+          -e SWE_DRIVER=agent \
+          -e SWE_RUN_LABEL=task-agent-go \
+          -e SWE_LIVE_OUTPUT=1 \
+          -e ANTHROPIC_API_KEY \
+          -e OPENAI_API_KEY \
+          -e OPENROUTER_API_KEY \
+          {{.IMAGE}} \
+          /repo/external_bench/swebench/scripts/bench_swe.sh /repo/external_bench/swebench/instances/curated_go.txt
 
   # ── evolve ────────────────────────────────────────────────────────────────
   evolve:

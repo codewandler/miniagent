@@ -321,6 +321,13 @@ func printStepHeader(w io.Writer, step, maxSteps int) {
 	)
 }
 
+func printResolvedModel(w io.Writer, model string) {
+	if model == "" {
+		return
+	}
+	fmt.Fprintf(w, "%s   model: %s%s\n", ansiDim, model, ansiReset)
+}
+
 // ---------------------------------------------------------------------------
 // Tool result display
 // ---------------------------------------------------------------------------

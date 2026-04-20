@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.2.6 — 2026-04-20
+
+Improved model resolution visibility, request caching hints, and SWE-bench agent benchmarking ergonomics.
+
+### Added
+- Printed the provider-resolved model once per streamed step when the model becomes known
+- Added request-cache coverage in agent tests to ensure top-level cache hints are propagated from message history
+- Added a dedicated `bench:swe:agent:go` Task target for the live Go-centric SWE benchmark subset
+- Added live per-instance progress output in the SWE bench runner and optional live agent log streaming via `SWE_LIVE_OUTPUT=1`
+- Added tests covering non-overlapping output and reasoning token aggregation and display
+
+### Changed
+- Moved model resolution display into the agent streaming path instead of resolving model aliases eagerly in `main`
+- Updated `github.com/codewandler/agentapis` to `v0.3.2`
+- Extended the SWE bench Docker task setup to mount Codex credentials read-only for agent-driven runs
+
+### Fixed
+- Fixed `agent` tests to use valid llm test stream helpers
+- Fixed usage aggregation and display expectations so output and reasoning tokens are reported separately without double counting
+- Removed obsolete top-level model resolution tests tied to the previous eager-resolution path
+
 ## v0.2.5 — 2026-04-19
 
 Improved streamed markdown rendering so terminal layout is width-aware, stable, and visually consistent between blocks.

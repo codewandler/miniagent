@@ -304,6 +304,10 @@ func (a *Agent) runStep(
 		Append(messages...).
 		Tools(a.toolDefs...)
 
+	if hint := llm.SynthesizeRequestCacheHint(messages); hint != nil {
+		rb.Cache(llm.CacheTTL(hint.TTL))
+	}
+
 	stream, err := a.provider.CreateStream(ctx, rb)
 	if err != nil {
 		return false, fmt.Errorf("create stream: %w", err)
@@ -313,20 +317,22 @@ func (a *Agent) runStep(
 
 	sd := newStepDisplay(a.out)
 	var stepUsage usage.Record
-	var resolvedModel string
+	printedResolvedModel := false
 
 	// Create tool handlers for all agentcore tools
 	toolHandlers := a.createToolHandlers()
 
 	result := llm.NewEventProcessor(ctx, stream).
 		OnEvent(llm.TypedEventHandler[*llm.StreamStartedEvent](func(ev *llm.StreamStartedEvent) {
-			if ev.Model != "" {
-				resolvedModel = ev.Model
+			if !printedResolvedModel && ev.Model != "" {
+				printResolvedModel(a.out, ev.Model)
+				printedResolvedModel = true
 			}
 		})).
 		OnEvent(llm.TypedEventHandler[*llm.ModelResolvedEvent](func(ev *llm.ModelResolvedEvent) {
-			if ev.Resolved != "" {
-				resolvedModel = ev.Resolved
+			if !printedResolvedModel && ev.Resolved != "" {
+				printResolvedModel(a.out, ev.Resolved)
+				printedResolvedModel = true
 			}
 		})).
 		OnReasoningDelta(func(chunk string) {
@@ -358,7 +364,7 @@ func (a *Agent) runStep(
 
 	// ── Per-step usage ──
 
-	printStepUsage(a.out, step, stepUsage, resolvedModel)
+	printStepUsage(a.out, step, stepUsage, "")
 
 	// ── Branch on stop reason (error paths return before appending to history) ──
 

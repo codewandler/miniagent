@@ -11,6 +11,7 @@ mkdir -p "$RUN_DIR"
 while IFS= read -r line; do
   [[ -z "$line" || "$line" =~ ^# ]] && continue
   instance_path="$ROOT_DIR/$line"
+  printf '\n=== SWE instance: %s ===\n' "$line"
   instance_id="$(jq -r '.instance_id' "$instance_path")"
   instance_dir="$RUN_DIR/$instance_id"
   mkdir -p "$instance_dir"

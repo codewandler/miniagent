@@ -260,13 +260,6 @@ func execute(args []string, inference InferenceConfig, maxSteps int, workspace, 
 	if err != nil {
 		return err
 	}
-	if inference.Model != "" {
-		resolvedModel, err := resolveModel(provider, inference.Model)
-		if err != nil {
-			return err
-		}
-		inference.Model = resolvedModel
-	}
 	a := agent.New(provider,
 		agent.WithWorkspace(workspace),
 		agent.WithToolTimeout(toolTimeout),
@@ -290,24 +283,6 @@ func execute(args []string, inference InferenceConfig, maxSteps int, workspace, 
 		return err
 	}
 	return agent.RunREPL(ctx, a, os.Stdin)
-}
-
-// resolveModel resolves a model string (alias or ID) to its canonical model ID.
-func resolveModel(provider llm.ModelsProvider, modelStr string) (string, error) {
-	if modelStr == "" {
-		return "", fmt.Errorf("model string cannot be empty")
-	}
-	for _, m := range provider.Models() {
-		if m.ID == modelStr {
-			return m.ID, nil
-		}
-		for _, alias := range m.Aliases {
-			if alias == modelStr {
-				return m.ID, nil
-			}
-		}
-	}
-	return "", fmt.Errorf("unknown model: %q (use 'miniagent models' to list available models)", modelStr)
 }
 
 func createProvider(ctx context.Context, debug bool) (*providerRuntime, error) {

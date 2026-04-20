@@ -48,12 +48,22 @@ elif [ "$driver" = "agent" ]; then
     printf '\nInstructions:\nFix the bug in this repository, run the relevant tests, and stop only after the repository is in a passing state if possible.\n'
   } > "$prompt_file"
   set +e
-  if [[ "$setup_strategy" == "swebench-python-django" ]]; then
-    timeout "$timeout_sec" bash -lc "cd '$workspace' && . .venv/bin/activate && '$miniagent_bin' --workspace '$workspace' --max-steps '${SWE_MAX_STEPS:-40}' --timeout '${SWE_TOTAL_TIMEOUT:-20m}' --tool-timeout '${SWE_TOOL_TIMEOUT:-120s}' \"$(cat "$prompt_file")\"" > "$run_log" 2>&1
+  if [[ "${SWE_LIVE_OUTPUT:-0}" == "1" ]]; then
+    if [[ "$setup_strategy" == "swebench-python-django" ]]; then
+      timeout "$timeout_sec" bash -lc "cd '$workspace' && . .venv/bin/activate && '$miniagent_bin' --workspace '$workspace' --max-steps '${SWE_MAX_STEPS:-40}' --timeout '${SWE_TOTAL_TIMEOUT:-20m}' --tool-timeout '${SWE_TOOL_TIMEOUT:-120s}' \"$(cat "$prompt_file")\"" 2>&1 | tee "$run_log" >&2
+      exit_code=${PIPESTATUS[0]}
+    else
+      timeout "$timeout_sec" "$miniagent_bin" --workspace "$workspace" --max-steps "${SWE_MAX_STEPS:-40}" --timeout "${SWE_TOTAL_TIMEOUT:-10m}" --tool-timeout "${SWE_TOOL_TIMEOUT:-60s}" "$(cat "$prompt_file")" 2>&1 | tee "$run_log" >&2
+      exit_code=${PIPESTATUS[0]}
+    fi
   else
-    timeout "$timeout_sec" "$miniagent_bin" --workspace "$workspace" --max-steps "${SWE_MAX_STEPS:-40}" --timeout "${SWE_TOTAL_TIMEOUT:-10m}" --tool-timeout "${SWE_TOOL_TIMEOUT:-60s}" "$(cat "$prompt_file")" > "$run_log" 2>&1
+    if [[ "$setup_strategy" == "swebench-python-django" ]]; then
+      timeout "$timeout_sec" bash -lc "cd '$workspace' && . .venv/bin/activate && '$miniagent_bin' --workspace '$workspace' --max-steps '${SWE_MAX_STEPS:-40}' --timeout '${SWE_TOTAL_TIMEOUT:-20m}' --tool-timeout '${SWE_TOOL_TIMEOUT:-120s}' \"$(cat "$prompt_file")\"" > "$run_log" 2>&1
+    else
+      timeout "$timeout_sec" "$miniagent_bin" --workspace "$workspace" --max-steps "${SWE_MAX_STEPS:-40}" --timeout "${SWE_TOTAL_TIMEOUT:-10m}" --tool-timeout "${SWE_TOOL_TIMEOUT:-60s}" "$(cat "$prompt_file")" > "$run_log" 2>&1
+    fi
+    exit_code=$?
   fi
-  exit_code=$?
   set -e
   steps=$(awk '/🔧/{c++} END{print c+0}' "$run_log")
 else

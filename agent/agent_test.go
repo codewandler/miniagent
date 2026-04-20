@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/codewandler/llm"
+	"github.com/codewandler/llm/llmtest"
 	"github.com/codewandler/llm/provider/fake"
 	"github.com/codewandler/llm/usage"
 	"github.com/stretchr/testify/assert"
@@ -44,6 +45,25 @@ func (blockingProviderImpl) CreateStream(ctx context.Context, _ llm.Buildable) (
 }
 
 func blockingProvider() llm.Provider { return blockingProviderImpl{} }
+
+type captureProvider struct {
+	create func(context.Context, llm.Buildable) (llm.Stream, error)
+}
+
+func (p captureProvider) Name() string { return "capture" }
+func (p captureProvider) Models() llm.Models {
+	return llm.Models{{ID: "capture/default", Name: "capture", Provider: "capture", Aliases: []string{llm.ModelDefault}}}
+}
+func (p captureProvider) CreateStream(ctx context.Context, src llm.Buildable) (llm.Stream, error) {
+	return p.create(ctx, src)
+}
+
+func singleTextStream() llm.Stream {
+	return llmtest.SendEvents(
+		llmtest.TextEvent("done"),
+		llmtest.CompletedEvent(llm.StopReasonEndTurn),
+	)
+}
 
 func TestNewInferenceOptions_AppliesOverrides(t *testing.T) {
 	opts := NewInferenceOptions(
@@ -88,6 +108,27 @@ func TestRunTurn_MaxStepsReached(t *testing.T) {
 
 	err := a.RunTurn(context.Background(), 1, "do something")
 	assert.ErrorIs(t, err, ErrMaxStepsReached)
+}
+
+func TestRunStep_SetsTopLevelRequestCacheHintFromMessages(t *testing.T) {
+	a, _ := newTestAgent(t, WithMaxSteps(1))
+	a.messages = a.initialMessages.Append(llm.User("do something"))
+
+	var got llm.Request
+	provider := captureProvider{create: func(_ context.Context, src llm.Buildable) (llm.Stream, error) {
+		var err error
+		got, err = src.BuildRequest(context.Background())
+		require.NoError(t, err)
+		return singleTextStream(), nil
+	}}
+	a.provider = provider
+
+	done, err := a.runStep(context.Background(), 1, 1, new(int))
+	require.NoError(t, err)
+	assert.True(t, done)
+	require.NotNil(t, got.CacheHint)
+	assert.True(t, got.CacheHint.Enabled)
+	assert.Equal(t, string(llm.CacheTTL1h), got.CacheHint.TTL)
 }
 
 // [REVIEW FIX #1]: use blocking provider — no buffered events → deterministic cancel.
@@ -176,4 +217,21 @@ func TestNewOmitsWebSearchWithoutTavilyKey(t *testing.T) {
 	}
 	require.Contains(t, names, "web_fetch")
 	require.NotContains(t, names, "web_search")
+}
+
+func TestAggregateTurnPreservesNonOverlappingOutputAndReasoning(t *testing.T) {
+	a := &Agent{tracker: usage.NewTracker()}
+	a.tracker.Record(usage.Record{
+		Dims:   usage.Dims{TurnID: "1"},
+		Tokens: usage.TokenItems{{Kind: usage.KindInput, Count: 10}, {Kind: usage.KindCacheRead, Count: 5}, {Kind: usage.KindOutput, Count: 21}, {Kind: usage.KindReasoning, Count: 9}},
+		Cost:   usage.Cost{Total: 1.5, Input: 0.2, CacheRead: 0.1, Output: 0.8, Reasoning: 0.4},
+	})
+	agg := a.aggregateTurn(1)
+	assert.Equal(t, 15, agg.Tokens.TotalInput())
+	assert.Equal(t, 30, agg.Tokens.TotalOutput())
+	assert.Equal(t, 21, agg.Tokens.Count(usage.KindOutput))
+	assert.Equal(t, 9, agg.Tokens.Count(usage.KindReasoning))
+	assert.Equal(t, 1.5, agg.Cost.Total)
+	assert.Equal(t, 0.8, agg.Cost.Output)
+	assert.Equal(t, 0.4, agg.Cost.Reasoning)
 }

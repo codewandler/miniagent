@@ -104,6 +104,14 @@ func TestFormatUsageParts(t *testing.T) {
 		assert.NotContains(t, parts, "cache_r")
 	})
 
+	t.Run("output and reasoning are displayed separately without overlap", func(t *testing.T) {
+		rec := usage.Record{Tokens: usage.TokenItems{{Kind: usage.KindOutput, Count: 21}, {Kind: usage.KindReasoning, Count: 9}}}
+		parts := formatUsageParts(rec)
+		assert.Contains(t, parts, "out: 21")
+		assert.Contains(t, parts, "reason: 9")
+		assert.NotContains(t, parts, "out: 30")
+	})
+
 	t.Run("empty record", func(t *testing.T) {
 		assert.Equal(t, "", formatUsageParts(usage.Record{}))
 	})
