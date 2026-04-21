@@ -221,7 +221,7 @@ func (a *Agent) runStep(ctx context.Context, turnID, step int, stepsCompleted *i
 		}
 	}
 	sd.End()
-	if ctx.Err() != nil {
+	if ctx.Err() != nil && len(toolCalls) == 0 {
 		return conversation.Request{}, false, ctx.Err()
 	}
 	display.PrintStepUsage(a.out, step, stepUsage, "")
@@ -233,6 +233,9 @@ func (a *Agent) runStep(ctx context.Context, turnID, step int, stepsCompleted *i
 		if stopReason == unified.StopReasonMaxTokens {
 			fmt.Fprintf(a.out, "\n%s⚠ model hit output token limit%s\n", display.BrightYellow, display.Reset)
 		}
+		if ctx.Err() != nil {
+			return conversation.Request{}, false, ctx.Err()
+		}
 		return conversation.Request{}, true, nil
 	}
 	followup := conversation.NewRequest().
@@ -242,12 +245,43 @@ func (a *Agent) runStep(ctx context.Context, turnID, step int, stepsCompleted *i
 		Effort(a.inference.Effort).
 		Tools(a.activeToolSpecs()).
 		ToolChoice(unified.ToolChoiceAuto{})
+	canceled := false
 	for _, tc := range toolCalls {
-		output, isError := a.executeTool(ctx, tc)
+		var output string
+		var isError bool
+		if canceled || ctx.Err() != nil {
+			output, isError = canceledToolResult, true
+			canceled = true
+		} else {
+			output, isError = a.executeTool(ctx, tc)
+			if ctx.Err() != nil || output == canceledToolResult || output == timedOutToolResult {
+				canceled = true
+			}
+		}
 		display.PrintToolResult(a.out, output, isError)
-		followup.ToolResult(tc.ID, output)
+		followup.ToolResultWithError(tc.ID, output, isError)
 	}
-	return followup.Build(), false, nil
+	built := followup.Build()
+	if ctx.Err() != nil {
+		if err := a.flushToolResultsAfterCancel(ctx, built); err != nil {
+			return conversation.Request{}, false, fmt.Errorf("flush canceled tool results: %w", err)
+		}
+		return conversation.Request{}, false, ctx.Err()
+	}
+	return built, false, nil
+}
+
+func (a *Agent) flushToolResultsAfterCancel(ctx context.Context, req conversation.Request) error {
+	flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	stream, err := a.session.Request(flushCtx, req)
+	if err != nil {
+		return err
+	}
+	for range stream {
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,6 +11,11 @@ import (
 	"github.com/codewandler/agentsdk/interfaces"
 	acoreTool "github.com/codewandler/agentsdk/tool"
 	"github.com/codewandler/agentsdk/tools/toolmgmt"
+)
+
+const (
+	canceledToolResult = "[Canceled]"
+	timedOutToolResult = "[Timed out]"
 )
 
 func (a *Agent) executeTool(ctx context.Context, tc unified.ToolCall) (string, bool) {
@@ -22,11 +28,33 @@ func (a *Agent) executeTool(ctx context.Context, tc unified.ToolCall) (string, b
 		toolCtx.extra[toolmgmt.KeyActivationState] = a.activation
 		result, err := t.Execute(toolCtx, input)
 		if err != nil {
-			return err.Error(), true
+			return toolResultFromError(ctx, err)
+		}
+		if ctx != nil {
+			if err := ctx.Err(); errors.Is(err, context.Canceled) {
+				return canceledToolResult, true
+			} else if errors.Is(err, context.DeadlineExceeded) {
+				return timedOutToolResult, true
+			}
 		}
 		return result.String(), result.IsError()
 	}
 	return fmt.Sprintf("tool not found: %s", tc.Name), true
+}
+
+func toolResultFromError(ctx context.Context, err error) (string, bool) {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return canceledToolResult, true
+	case errors.Is(err, context.DeadlineExceeded):
+		return timedOutToolResult, true
+	case ctx != nil && errors.Is(ctx.Err(), context.Canceled):
+		return canceledToolResult, true
+	case ctx != nil && errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return timedOutToolResult, true
+	default:
+		return err.Error(), true
+	}
 }
 
 func (a *Agent) activeToolSpecs() []unified.Tool {

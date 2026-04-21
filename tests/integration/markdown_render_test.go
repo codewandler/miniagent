@@ -37,6 +37,9 @@ type fakeProvider struct {
 }
 
 func (fp *fakeProvider) Name() string { return "fake" }
+func (fp *fakeProvider) Stream(ctx context.Context, req unified.Request) (<-chan client.StreamResult, error) {
+	return fp.streamer.Stream(ctx, req)
+}
 func (fp *fakeProvider) CreateSession(opts ...conversation.Option) *conversation.Session {
 	return conversation.New(fp.streamer, opts...)
 }

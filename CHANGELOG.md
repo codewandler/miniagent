@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.2.10 — 2026-04-21
+
+Improved cancellation handling during tool execution so interrupted runs report canceled tool results cleanly and preserve conversation consistency.
+
+### Added
+- Regression tests covering cancellation during single and multiple tool calls, ensuring canceled tool results are flushed back into the follow-up request
+- Test provider `Stream` passthrough helpers used by cancellation and integration coverage
+
+### Changed
+- Tool execution now maps canceled and timed-out tool failures to stable `[Canceled]` and `[Timed out]` tool results
+- Follow-up tool responses are now recorded with explicit error state via `ToolResultWithError`
+- The agent now flushes pending canceled tool results to the model after context cancellation before returning the cancellation error
+
+### Fixed
+- Avoided dropping tool-call results when cancellation happens immediately after a streamed tool-use response
+- Marked remaining queued tool calls as canceled once an earlier tool call is canceled or times out
+
 ## v0.2.9 — 2026-04-21
 
 ### Changed
