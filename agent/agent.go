@@ -92,6 +92,8 @@ func (a *Agent) initSession() error {
 		conversation.WithThinking(a.inference.Thinking),
 		conversation.WithEffort(a.inference.Effort),
 		conversation.WithSystem(prompt),
+		conversation.WithCachePolicy(conversation.CachePolicyOn),
+		conversation.WithSessionID(a.sessionID),
 		conversation.WithCapabilities(conversation.Capabilities{}),
 	)
 	return nil
