@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/codewandler/llm/usage"
+	"github.com/codewandler/miniagent/agent/usage"
 	"github.com/stretchr/testify/assert"
 )
 

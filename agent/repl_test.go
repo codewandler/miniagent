@@ -13,7 +13,18 @@ import (
 func newREPLTestAgent(t *testing.T) (*Agent, *bytes.Buffer) {
 	t.Helper()
 	var buf bytes.Buffer
-	a := New(newFakeStreamer(), WithWorkspace(t.TempDir()), WithToolTimeout(5*time.Second), WithOutput(&buf))
+	testModel := TestServiceID + "/" + TestModelID
+	a := New(newFakeService(),
+		WithWorkspace(t.TempDir()),
+		WithToolTimeout(5*time.Second),
+		WithOutput(&buf),
+		WithInferenceOptions(InferenceOptions{
+			Model:     testModel,
+			MaxTokens: 1000,
+			Thinking:  "on",
+			Effort:    "medium",
+		}),
+	)
 	return a, &buf
 }
 
@@ -47,10 +58,11 @@ func TestRunREPL_ShowsParamsBeforePrompt(t *testing.T) {
 	err := RunREPL(context.Background(), a, input)
 	assert.NoError(t, err)
 	out := buf.String()
-	assert.Contains(t, out, "model: codex/gpt-5.4")
+	expectedModel := TestServiceID + "/" + TestModelID
+	assert.Contains(t, out, "model: "+expectedModel)
 	assert.Contains(t, out, "thinking: on")
 	assert.Contains(t, out, "effort: medium")
-	assert.Less(t, strings.Index(out, "model: codex/gpt-5.4"), strings.Index(out, "miniagent> "))
+	assert.Less(t, strings.Index(out, "model: "+expectedModel), strings.Index(out, "miniagent> "))
 }
 
 func TestRunREPL_ExecutesThenExits(t *testing.T) {

@@ -20,18 +20,18 @@ import (
 	"github.com/codewandler/agentcore/tools/shell"
 	"github.com/codewandler/agentcore/tools/toolmgmt"
 	"github.com/codewandler/agentcore/tools/web"
-	lpprovider "github.com/codewandler/llmproviders/provider"
-	lppricing "github.com/codewandler/llmproviders/pricing"
+	llmproviders "github.com/codewandler/llmproviders"
+	"github.com/codewandler/llmproviders/registry"
+	"github.com/codewandler/miniagent/agent/usage"
 	nanoid "github.com/matoous/go-nanoid/v2"
-
-	"github.com/codewandler/llm/usage"
 )
 
 // Agent runs an agentic loop: model → tools → model → tools → ...
 // A single Agent instance is reused across REPL turns; conversation history
 // and usage records accumulate across turns.
 type Agent struct {
-	streamer       conversation.Streamer
+	service        *llmproviders.Service
+	provider       registry.Provider
 	session        *conversation.Session
 	tracker        *usage.Tracker
 	allTools       []acoreTool.Tool
@@ -87,13 +87,17 @@ func WithModel(m string) InferenceOption { return func(o *InferenceOptions) { o.
 func WithMaxTokens(n int) InferenceOption { return func(o *InferenceOptions) { o.MaxTokens = n } }
 
 // WithThinking sets the thinking mode.
-func WithThinking(m unified.ThinkingMode) InferenceOption { return func(o *InferenceOptions) { o.Thinking = m } }
+func WithThinking(m unified.ThinkingMode) InferenceOption {
+	return func(o *InferenceOptions) { o.Thinking = m }
+}
 
 // WithEffort sets the effort level.
 func WithEffort(e unified.Effort) InferenceOption { return func(o *InferenceOptions) { o.Effort = e } }
 
 // WithTemperature sets the sampling temperature.
-func WithTemperature(t float64) InferenceOption { return func(o *InferenceOptions) { o.Temperature = t } }
+func WithTemperature(t float64) InferenceOption {
+	return func(o *InferenceOptions) { o.Temperature = t }
+}
 
 // WithInferenceOptions sets all inference options at once.
 func WithInferenceOptions(opts InferenceOptions) Option { return func(a *Agent) { a.inference = opts } }
@@ -114,10 +118,10 @@ func WithToolTimeout(d time.Duration) Option { return func(a *Agent) { a.toolTim
 func WithSystemOverride(prompt string) Option { return func(a *Agent) { a.systemOverride = prompt } }
 
 // New creates an Agent. All settings are configurable via Options.
-func New(streamer conversation.Streamer, opts ...Option) *Agent {
+func New(service *llmproviders.Service, opts ...Option) *Agent {
 	sessionID, _ := nanoid.Generate("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", 8)
 	a := &Agent{
-		streamer:    streamer,
+		service:     service,
 		inference:   DefaultInferenceOptions(),
 		maxSteps:    30,
 		out:         os.Stdout,
@@ -137,27 +141,30 @@ func New(streamer conversation.Streamer, opts ...Option) *Agent {
 
 	a.tracker = usage.NewTracker()
 	a.setupTools(a.workspace, a.toolTimeout)
-	a.initSession()
+	if err := a.initSession(); err != nil {
+		panic(fmt.Sprintf("failed to initialize agent session: %v", err))
+	}
 	return a
 }
 
-func (a *Agent) initSession() {
-	prompt := BuildSystemPrompt(a.workspace, a.systemOverride)
-	caps := conversation.Capabilities{}
-	if p, ok := a.streamer.(interface{ Capabilities() lpprovider.Capabilities }); ok {
-		pc := p.Capabilities()
-		caps.SupportsResponsesPreviousResponseID = pc.SupportsResponsesPreviousResponseID
+func (a *Agent) initSession() error {
+	provider, resolvedModel, err := a.service.ProviderFor(a.inference.Model)
+	if err != nil {
+		return fmt.Errorf("failed to get provider for model %q: %w", a.inference.Model, err)
 	}
-	a.session = conversation.New(
-		a.streamer,
-		conversation.WithModel(a.inference.Model),
+	a.provider = provider
+
+	prompt := BuildSystemPrompt(a.workspace, a.systemOverride)
+	a.session = provider.CreateSession(
+		conversation.WithModel(resolvedModel),
 		conversation.WithMaxTokens(a.inference.MaxTokens),
 		conversation.WithTemperature(a.inference.Temperature),
 		conversation.WithThinking(a.inference.Thinking),
 		conversation.WithEffort(a.inference.Effort),
 		conversation.WithSystem(prompt),
-		conversation.WithCapabilities(caps),
+		conversation.WithCapabilities(conversation.Capabilities{}),
 	)
+	return nil
 }
 
 // setupTools initializes all tools from agentcore packages.
@@ -192,6 +199,9 @@ func (a *Agent) Reset() {
 	a.session.Reset()
 	a.tracker.Reset()
 	a.sessionID, _ = nanoid.Generate("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", 8)
+	if err := a.initSession(); err != nil {
+		panic(fmt.Sprintf("failed to reset agent session: %v", err))
+	}
 }
 
 // ErrMaxStepsReached is returned by RunTurn when the step loop is exhausted.
@@ -335,22 +345,20 @@ func (a *Agent) recordTransportUsage(turnID int, u unified.StreamUsage) usage.Re
 		},
 		RecordedAt: time.Now(),
 	}
-	if p, ok := lppricing.Lookup(providerName, modelName); ok {
-		rec.Cost.Total = lppricing.EstimateCost(u, p)
-		rec.Cost.Source = "calculated"
-	}
 	return rec
 }
 
 func (a *Agent) providerAndModel(u unified.StreamUsage) (string, string) {
 	providerName := ""
 	model := a.inference.Model
-	if named, ok := a.streamer.(interface{ Name() string }); ok {
-		providerName = named.Name()
+	if a.provider != nil {
+		providerName = a.provider.Name()
 	}
-	if providerName == "" && strings.Contains(model, "/") {
+	if providerName == "" && len(model) > 0 && model[0] != '/' {
 		parts := strings.SplitN(model, "/", 2)
-		providerName, model = parts[0], parts[1]
+		if len(parts) == 2 {
+			providerName, model = parts[0], parts[1]
+		}
 	}
 	if providerName != "" && strings.HasPrefix(model, providerName+"/") {
 		model = strings.TrimPrefix(model, providerName+"/")
@@ -448,11 +456,31 @@ type agentcoreToolContext struct {
 	sessionID  string
 }
 
-func (c *agentcoreToolContext) WorkDir() string                 { return c.workspace }
-func (c *agentcoreToolContext) Extra() map[string]any           { return c.extra }
-func (c *agentcoreToolContext) Deadline() (time.Time, bool)     { if c.ctx == nil { return time.Time{}, false }; return c.ctx.Deadline() }
-func (c *agentcoreToolContext) Done() <-chan struct{}           { if c.ctx == nil { return nil }; return c.ctx.Done() }
-func (c *agentcoreToolContext) Err() error                      { if c.ctx == nil { return nil }; return c.ctx.Err() }
-func (c *agentcoreToolContext) Value(key any) any               { if c.ctx == nil { return nil }; return c.ctx.Value(key) }
-func (c *agentcoreToolContext) AgentID() string                 { return "" }
-func (c *agentcoreToolContext) SessionID() string               { return c.sessionID }
+func (c *agentcoreToolContext) WorkDir() string       { return c.workspace }
+func (c *agentcoreToolContext) Extra() map[string]any { return c.extra }
+func (c *agentcoreToolContext) Deadline() (time.Time, bool) {
+	if c.ctx == nil {
+		return time.Time{}, false
+	}
+	return c.ctx.Deadline()
+}
+func (c *agentcoreToolContext) Done() <-chan struct{} {
+	if c.ctx == nil {
+		return nil
+	}
+	return c.ctx.Done()
+}
+func (c *agentcoreToolContext) Err() error {
+	if c.ctx == nil {
+		return nil
+	}
+	return c.ctx.Err()
+}
+func (c *agentcoreToolContext) Value(key any) any {
+	if c.ctx == nil {
+		return nil
+	}
+	return c.ctx.Value(key)
+}
+func (c *agentcoreToolContext) AgentID() string   { return "" }
+func (c *agentcoreToolContext) SessionID() string { return c.sessionID }

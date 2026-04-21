@@ -10,6 +10,9 @@ import (
 
 	"github.com/codewandler/agentapis/api/unified"
 	"github.com/codewandler/agentapis/client"
+	"github.com/codewandler/agentapis/conversation"
+	llmproviders "github.com/codewandler/llmproviders"
+	"github.com/codewandler/llmproviders/registry"
 	"github.com/codewandler/miniagent/agent"
 	"github.com/stretchr/testify/require"
 )
@@ -29,12 +32,43 @@ func (f *fakeStreamer) Stream(_ context.Context, _ unified.Request) (<-chan clie
 	return ch, nil
 }
 
+type fakeProvider struct {
+	streamer conversation.Streamer
+}
+
+func (fp *fakeProvider) Name() string { return "fake" }
+func (fp *fakeProvider) CreateSession(opts ...conversation.Option) *conversation.Session {
+	return conversation.New(fp.streamer, opts...)
+}
+
+// Uses "anthropic" ServiceID and "claude-sonnet-4-6" model to pass catalog validation.
+func newFakeService() *llmproviders.Service {
+	reg := registry.New()
+	reg.Register(registry.Registration{
+		InstanceName: "anthropic",
+		ServiceID:    "anthropic",
+		Order:        1,
+		Detect: func(ctx context.Context) (bool, error) {
+			return true, nil
+		},
+		Build: func(ctx context.Context, cfg registry.BuildConfig) (registry.Provider, error) {
+			return &fakeProvider{streamer: &fakeStreamer{}}, nil
+		},
+	})
+
+	svc, _ := llmproviders.NewService(
+		llmproviders.WithRegistry(reg),
+	)
+	return svc
+}
+
 func TestMarkdownRendering_StableFenceBlock(t *testing.T) {
 	if os.Getenv("MINIAGENT_INTEGRATION") == "" {
 		t.Skip("set MINIAGENT_INTEGRATION=1 to run integration tests")
 	}
 	var buf bytes.Buffer
-	a := agent.New(&fakeStreamer{}, agent.WithWorkspace(t.TempDir()), agent.WithToolTimeout(5*time.Second), agent.WithOutput(&buf))
+	svc := newFakeService()
+	a := agent.New(svc, agent.WithWorkspace(t.TempDir()), agent.WithToolTimeout(5*time.Second), agent.WithOutput(&buf))
 	err := a.RunTurn(context.Background(), 1, "show code")
 	require.NoError(t, err)
 	out := buf.String()
@@ -48,10 +82,15 @@ func stripANSI(s string) string {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if inEsc {
-			if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') { inEsc = false }
+			if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+				inEsc = false
+			}
 			continue
 		}
-		if c == 0x1b { inEsc = true; continue }
+		if c == 0x1b {
+			inEsc = true
+			continue
+		}
 		b.WriteByte(c)
 	}
 	return b.String()

@@ -10,7 +10,7 @@ import (
 
 	"github.com/charmbracelet/glamour"
 	acoremd "github.com/codewandler/agentcore/markdown"
-	"github.com/codewandler/llm/usage"
+	"github.com/codewandler/miniagent/agent/usage"
 	"golang.org/x/term"
 )
 

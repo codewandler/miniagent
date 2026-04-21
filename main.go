@@ -11,8 +11,9 @@ import (
 	"time"
 
 	"github.com/codewandler/agentapis/api/unified"
-	"github.com/codewandler/agentapis/conversation"
-	"github.com/codewandler/llmproviders/providers/codex"
+	"github.com/codewandler/llmproviders"
+	"github.com/codewandler/llmproviders/cli"
+	"github.com/codewandler/llmproviders/registry/auto"
 	"github.com/codewandler/miniagent/agent"
 	"github.com/spf13/cobra"
 )
@@ -27,20 +28,19 @@ func main() {
 type InferenceConfig = agent.InferenceOptions
 
 type providerRuntime struct {
-	streamer conversation.Streamer
-	models   []string
+	service *llmproviders.Service
 }
 
 func rootCmd() *cobra.Command {
 	var (
-		inference       InferenceConfig = agent.DefaultInferenceOptions()
-		maxSteps                        = 30
-		workspace       string
-		systemPrompt    string
-		totalTimeout    time.Duration
-		toolTimeout     time.Duration
-		thinkingFlag    string
-		effortFlag      string
+		inference    InferenceConfig = agent.DefaultInferenceOptions()
+		maxSteps                     = 30
+		workspace    string
+		systemPrompt string
+		totalTimeout time.Duration
+		toolTimeout  time.Duration
+		thinkingFlag string
+		effortFlag   string
 	)
 	cmd := &cobra.Command{
 		Use:   "miniagent [task]",
@@ -73,28 +73,16 @@ With a positional argument it runs the task once and exits.`,
 	f.StringVar(&thinkingFlag, "thinking", string(inference.Thinking), "Thinking mode: auto|on|off")
 	f.StringVar(&effortFlag, "effort", string(inference.Effort), "Effort level: low|medium|high|max")
 	_ = cmd.RegisterFlagCompletionFunc("model", completeModelFlag)
-	cmd.AddCommand(modelsCmd())
+
+	// Add llmproviders CLI as a subcommand group: miniagent llm <subcommand>
+	cmd.AddCommand(cli.NewLLMCommand(cli.LLMCommandOptions{
+		Use: "llm",
+		LoadService: func(ctx context.Context) (*llmproviders.Service, error) {
+			return createProvider(ctx)
+		},
+	}))
 	cmd.AddCommand(completionCmd(cmd))
 	return cmd
-}
-
-func modelsCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:           "models",
-		Short:         "List available model IDs",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			provider, err := createProvider(cmd.Context())
-			if err != nil {
-				return err
-			}
-			for _, m := range provider.models {
-				fmt.Println(m)
-			}
-			return nil
-		},
-	}
 }
 
 func completionCmd(root *cobra.Command) *cobra.Command {
@@ -116,21 +104,39 @@ func completionInstallCmd(root *cobra.Command) *cobra.Command {
 		SilenceErrors: true,
 		RunE: func(_ *cobra.Command, args []string) error {
 			shell := ""
-			if len(args) == 1 { shell = strings.ToLower(args[0]) } else { shell = detectShell() }
-			if shell == "" { return fmt.Errorf("unable to detect shell; pass bash, zsh, or fish") }
+			if len(args) == 1 {
+				shell = strings.ToLower(args[0])
+			} else {
+				shell = detectShell()
+			}
+			if shell == "" {
+				return fmt.Errorf("unable to detect shell; pass bash, zsh, or fish")
+			}
 			target, err := completionInstallPath(shell, file)
-			if err != nil { return err }
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil { return fmt.Errorf("create completion directory: %w", err) }
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return fmt.Errorf("create completion directory: %w", err)
+			}
 			f, err := os.Create(target)
-			if err != nil { return fmt.Errorf("create completion file: %w", err) }
+			if err != nil {
+				return fmt.Errorf("create completion file: %w", err)
+			}
 			defer f.Close()
 			switch shell {
-			case "bash": err = root.GenBashCompletionV2(f, true)
-			case "zsh": err = root.GenZshCompletion(f)
-			case "fish": err = root.GenFishCompletion(f, true)
-			default: return fmt.Errorf("unsupported shell %q", shell)
+			case "bash":
+				err = root.GenBashCompletionV2(f, true)
+			case "zsh":
+				err = root.GenZshCompletion(f)
+			case "fish":
+				err = root.GenFishCompletion(f, true)
+			default:
+				return fmt.Errorf("unsupported shell %q", shell)
 			}
-			if err != nil { return err }
+			if err != nil {
+				return err
+			}
 			fmt.Fprintf(os.Stdout, "Installed %s completion to %s\n", shell, target)
 			fmt.Fprintln(os.Stdout, "Restart your shell or source the file to enable completions.")
 			return nil
@@ -151,39 +157,57 @@ func detectShell() string {
 }
 
 func completionInstallPath(shell, override string) (string, error) {
-	if override != "" { return override, nil }
+	if override != "" {
+		return override, nil
+	}
 	home, err := os.UserHomeDir()
-	if err != nil { return "", fmt.Errorf("get home directory: %w", err) }
+	if err != nil {
+		return "", fmt.Errorf("get home directory: %w", err)
+	}
 	switch shell {
-	case "bash": return filepath.Join(home, ".local/share/bash-completion/completions/miniagent"), nil
-	case "zsh": return filepath.Join(home, ".zsh/completions/_miniagent"), nil
-	case "fish": return filepath.Join(home, ".config/fish/completions/miniagent.fish"), nil
-	default: return "", fmt.Errorf("unsupported shell %q", shell)
+	case "bash":
+		return filepath.Join(home, ".local/share/bash-completion/completions/miniagent"), nil
+	case "zsh":
+		return filepath.Join(home, ".zsh/completions/_miniagent"), nil
+	case "fish":
+		return filepath.Join(home, ".config/fish/completions/miniagent.fish"), nil
+	default:
+		return "", fmt.Errorf("unsupported shell %q", shell)
 	}
 }
 
 func completeModelFlag(cmd *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	provider, err := createProvider(cmd.Context())
-	if err != nil { return nil, cobra.ShellCompDirectiveNoFileComp }
+	svc, err := createProvider(cmd.Context())
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
 	var matches []string
-	for _, m := range provider.models {
-		if containsFold(m, toComplete) { matches = append(matches, m) }
+	for _, m := range svc.Models("") {
+		if containsFold(m, toComplete) {
+			matches = append(matches, m)
+		}
 	}
 	return matches, cobra.ShellCompDirectiveNoFileComp
 }
 
-func containsFold(s, substr string) bool { return strings.Contains(strings.ToLower(s), strings.ToLower(substr)) }
+func containsFold(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
 
 func execute(args []string, inference InferenceConfig, maxSteps int, workspace, systemPrompt string, totalTimeout, toolTimeout time.Duration) error {
 	if workspace == "" {
 		wd, err := os.Getwd()
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		workspace = wd
 	}
 	ctx := context.Background()
-	provider, err := createProvider(ctx)
-	if err != nil { return err }
-	a := agent.New(provider.streamer,
+	svc, err := createProvider(ctx)
+	if err != nil {
+		return err
+	}
+	a := agent.New(svc,
 		agent.WithWorkspace(workspace),
 		agent.WithToolTimeout(toolTimeout),
 		agent.WithSystemOverride(systemPrompt),
@@ -192,7 +216,9 @@ func execute(args []string, inference InferenceConfig, maxSteps int, workspace, 
 	)
 	if len(args) == 1 {
 		ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
-		if totalTimeout > 0 { ctx, cancel = context.WithTimeout(ctx, totalTimeout) }
+		if totalTimeout > 0 {
+			ctx, cancel = context.WithTimeout(ctx, totalTimeout)
+		}
 		defer cancel()
 		err := a.RunTurn(ctx, 1, args[0])
 		fmt.Println()
@@ -206,11 +232,7 @@ func execute(args []string, inference InferenceConfig, maxSteps int, workspace, 
 	return agent.RunREPL(ctx, a, os.Stdin)
 }
 
-func createProvider(_ context.Context) (*providerRuntime, error) {
-	p := codex.New()
-	catalog := codex.CatalogModels()
-	models := make([]string, 0, len(catalog))
-	for _, m := range catalog { models = append(models, "codex/"+m.ID) }
-	if len(models) == 0 { return nil, fmt.Errorf("no codex models available") }
-	return &providerRuntime{streamer: p, models: models}, nil
+func createProvider(_ context.Context) (*llmproviders.Service, error) {
+	reg := auto.NewAutoDetectRegistry()
+	return llmproviders.NewService(llmproviders.WithRegistry(reg))
 }
