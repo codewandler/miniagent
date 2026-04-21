@@ -13,11 +13,11 @@ import (
 
 	"github.com/codewandler/agentapis/api/unified"
 	"github.com/codewandler/agentapis/conversation"
-	acoreTool "github.com/codewandler/agentcore/tool"
-	"github.com/codewandler/agentcore/tools/filesystem"
-	"github.com/codewandler/agentcore/tools/shell"
-	"github.com/codewandler/agentcore/tools/toolmgmt"
-	"github.com/codewandler/agentcore/tools/web"
+	acoreTool "github.com/codewandler/agentsdk/tool"
+	"github.com/codewandler/agentsdk/tools/filesystem"
+	"github.com/codewandler/agentsdk/tools/shell"
+	"github.com/codewandler/agentsdk/tools/toolmgmt"
+	"github.com/codewandler/agentsdk/tools/web"
 	llmproviders "github.com/codewandler/llmproviders"
 	"github.com/codewandler/llmproviders/registry"
 	"github.com/codewandler/miniagent/agent/display"
@@ -97,7 +97,7 @@ func (a *Agent) initSession() error {
 	return nil
 }
 
-// setupTools initializes all tools from agentcore packages.
+// setupTools initializes all tools from agentsdk packages.
 func (a *Agent) setupTools(workspace string, toolTimeout time.Duration) {
 	var allTools []acoreTool.Tool
 	allTools = append(allTools, shell.Tools()...)

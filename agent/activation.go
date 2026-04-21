@@ -1,8 +1,8 @@
 package agent
 
 import (
-	"github.com/codewandler/agentcore/interfaces"
-	acoreTool "github.com/codewandler/agentcore/tool"
+	"github.com/codewandler/agentsdk/interfaces"
+	acoreTool "github.com/codewandler/agentsdk/tool"
 	"path/filepath"
 )
 

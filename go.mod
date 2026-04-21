@@ -5,7 +5,7 @@ go 1.26.1
 require (
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/codewandler/agentapis v0.9.1
-	github.com/codewandler/agentcore v0.2.2
+	github.com/codewandler/agentsdk v0.2.2
 	github.com/codewandler/llmproviders v0.5.1
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/spf13/cobra v1.10.2
@@ -64,6 +64,6 @@ require (
 
 replace (
 	github.com/codewandler/agentapis => ../agentapis
-	github.com/codewandler/agentcore => ../agentcore
+	github.com/codewandler/agentsdk => ../agentsdk
 	github.com/codewandler/llmproviders => ../llmproviders
 )

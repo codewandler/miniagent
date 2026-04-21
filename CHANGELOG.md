@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.9 — 2026-04-21
+
+### Changed
+- Renamed `agentcore` dependency to `agentsdk` (`github.com/codewandler/agentsdk`)
+- Updated all import paths and replace directive
+
 ## v0.2.8 — 2026-04-21
 
 Improved runtime diagnostics, upgraded to llmproviders service layer, and rewrote system prompt for tool-first workflows.
@@ -92,7 +98,7 @@ Added built-in web tooling via agentcore, including optional Tavily-backed web s
 - Added agent tests covering both the configured and unconfigured web-search cases
 
 ### Changed
-- Updated `github.com/codewandler/agentcore` to `v0.2.2` to pick up the new web tooling
+- Updated `github.com/codewandler/agentsdk` to `v0.2.2` to pick up the new web tooling
 
 ## v0.2.3 — 2026-04-19
 

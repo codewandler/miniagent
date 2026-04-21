@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	acoremd "github.com/codewandler/agentcore/markdown"
+	acoremd "github.com/codewandler/agentsdk/markdown"
 )
 
 // State represents the current display state during step output.

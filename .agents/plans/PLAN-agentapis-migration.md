@@ -11,7 +11,7 @@ Migrate `miniagent` away from:
 and onto:
 - `github.com/codewandler/agentapis/conversation`
 - `github.com/codewandler/agentapis/api/unified`
-- `github.com/codewandler/agentcore`
+- `github.com/codewandler/agentsdk`
 - `github.com/codewandler/llmproviders/providers/codex`
 - `github.com/codewandler/llmproviders/pricing`
 
@@ -124,7 +124,7 @@ This is exactly the old architecture we want to move away from.
 Target imports should center on:
 - `github.com/codewandler/agentapis/conversation`
 - `github.com/codewandler/agentapis/api/unified`
-- `github.com/codewandler/agentcore/tool`
+- `github.com/codewandler/agentsdk/tool`
 - `github.com/codewandler/llmproviders/providers/codex`
 - `github.com/codewandler/llmproviders/pricing`
 
