@@ -25,10 +25,28 @@ The loop continues until the model stops calling the tool (task done) or
 |---|---|
 | `main.go` | CLI entry point, flag definitions, provider setup |
 | `agent/system.go` | **System prompt** — the highest-leverage file for self-improvement |
-| `agent/tools.go` | Bash tool definition, executor, output truncation |
-| `agent/agent.go` | Core LLM→tool loop, history management, streaming |
-| `agent/display.go` | Terminal output formatting, ANSI colours |
+| `agent/agent.go` | Core LLM→tool loop, history management, streaming, usage tracking |
+| `agent/options.go` | Agent and inference configuration options |
+| `agent/toolexec.go` | Tool execution and context adapter |
 | `agent/repl.go` | Interactive REPL mode |
+| `agent/activation.go` | Tool activation state management |
+| `agent/display/` | Terminal output formatting package |
+
+### Display package (`agent/display/`)
+
+| File | Role |
+|---|---|
+| `ansi.go` | ANSI escape codes and Truncate helper |
+| `format.go` | Token/cost formatting utilities |
+| `markdown.go` | Glamour-based markdown rendering |
+| `step.go` | StepDisplay state machine for streaming output |
+| `usage.go` | Usage line printing (step, turn, session) |
+
+### Supporting packages
+
+| Package | Role |
+|---|---|
+| `agent/usage/` | Usage tracking and aggregation (422 lines) |
 
 ---
 
@@ -99,8 +117,8 @@ be respected by any agent modifying this codebase:
 
 **Allowed:**
 - Edit `agent/system.go` — system prompt body
-- Edit `agent/tools.go` — tool description, `maxOutputBytes`, timeout logic
-- Edit `agent/display.go` — output formatting
+- Edit `agent/display/` — output formatting
+- Edit `agent/options.go` — configuration defaults
 - Edit `main.go` — CLI flag defaults
 - Add new functions within existing files if they serve the allowed changes
 

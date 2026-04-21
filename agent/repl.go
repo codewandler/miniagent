@@ -10,6 +10,8 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+
+	"github.com/codewandler/miniagent/agent/display"
 )
 
 // RunREPL runs an interactive prompt loop. Conversation history persists
@@ -20,7 +22,7 @@ func RunREPL(ctx context.Context, a *Agent, input io.Reader) error {
 	out := a.Out()
 	turnID := 0
 
-	fmt.Fprintf(out, "%s[%s]%s\n", ansiDim, a.ParamsSummary(), ansiReset)
+	fmt.Fprintf(out, "%s[%s]%s\n", display.Dim, a.ParamsSummary(), display.Reset)
 
 	// Persistent signal handler — routes SIGINT based on agent state.
 	var (
@@ -45,7 +47,7 @@ func RunREPL(ctx context.Context, a *Agent, input io.Reader) error {
 			} else {
 				// at prompt: print session totals and exit
 				fmt.Fprintln(out)
-				PrintSessionUsage(out, a.SessionID(), a.Tracker().Aggregate())
+				display.PrintSessionUsage(out, a.SessionID(), a.Tracker().Aggregate())
 				os.Exit(130)
 			}
 		}
@@ -85,11 +87,11 @@ func RunREPL(ctx context.Context, a *Agent, input io.Reader) error {
 		cancel()
 
 		if err != nil && !errors.Is(err, context.Canceled) {
-			printError(out, err)
+			display.PrintError(out, err)
 		}
 	}
 
 	fmt.Fprintln(out)
-	PrintSessionUsage(out, a.SessionID(), a.Tracker().Aggregate())
+	display.PrintSessionUsage(out, a.SessionID(), a.Tracker().Aggregate())
 	return nil
 }

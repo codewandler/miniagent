@@ -15,6 +15,7 @@ import (
 	"github.com/codewandler/llmproviders/cli"
 	"github.com/codewandler/llmproviders/registry/auto"
 	"github.com/codewandler/miniagent/agent"
+	"github.com/codewandler/miniagent/agent/display"
 	"github.com/spf13/cobra"
 )
 
@@ -26,10 +27,6 @@ func main() {
 }
 
 type InferenceConfig = agent.InferenceOptions
-
-type providerRuntime struct {
-	service *llmproviders.Service
-}
 
 func rootCmd() *cobra.Command {
 	var (
@@ -222,7 +219,7 @@ func execute(args []string, inference InferenceConfig, maxSteps int, workspace, 
 		defer cancel()
 		err := a.RunTurn(ctx, 1, args[0])
 		fmt.Println()
-		agent.PrintSessionUsage(os.Stdout, a.SessionID(), a.Tracker().Aggregate())
+		display.PrintSessionUsage(os.Stdout, a.SessionID(), a.Tracker().Aggregate())
 		if errors.Is(err, agent.ErrMaxStepsReached) {
 			fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 			return nil

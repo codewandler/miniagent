@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.2.7 — 2026-04-21
+
+Restructured agent package: created dedicated `display/` package, split large files, and removed dead code.
+
+### Added
+- Created `agent/display/` package with 5 focused files:
+  - `ansi.go` — ANSI escape codes and Truncate helper
+  - `format.go` — token/cost formatting utilities
+  - `markdown.go` — Glamour-based markdown rendering
+  - `step.go` — StepDisplay state machine for streaming output
+  - `usage.go` — usage line printing (step, turn, session)
+- Created `agent/options.go` for InferenceOptions and functional options (80 lines)
+- Created `agent/toolexec.go` for tool execution and context adapter (87 lines)
+
+### Changed
+- Split `agent/agent.go` from 487 → 344 lines by extracting options and tool execution
+- Moved display tests to `agent/display/display_test.go`
+- Updated `AGENTS.md` with new file structure documentation
+- Marked `llm` dependency as indirect (no longer directly imported)
+
+### Removed
+- Deleted `agent/tools.go` (125 lines of dead code after agentcore migration)
+- Deleted `agent/tools_test.go` (dead tests)
+- Deleted `agent/display.go` (moved to display package)
+- Deleted `agent/display_test.go` (moved to display package)
+
 ## v0.2.6 — 2026-04-20
 
 Improved model resolution visibility, request caching hints, and SWE-bench agent benchmarking ergonomics.

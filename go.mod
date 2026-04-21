@@ -6,7 +6,6 @@ require (
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/codewandler/agentapis v0.9.0
 	github.com/codewandler/agentcore v0.2.2
-	github.com/codewandler/llm v0.38.0
 	github.com/codewandler/llmproviders v0.0.0
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/spf13/cobra v1.10.2
@@ -29,6 +28,7 @@ require (
 	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
 	github.com/charmbracelet/x/exp/slice v0.0.0-20250327172914-2fdc97757edf // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
+	github.com/codewandler/llm v0.38.0 // indirect
 	github.com/codewandler/modeldb v0.11.8 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect

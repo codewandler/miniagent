@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/codewandler/agentapis/api/unified"
 	"github.com/codewandler/agentapis/conversation"
-	"github.com/codewandler/agentcore/interfaces"
 	acoreTool "github.com/codewandler/agentcore/tool"
 	"github.com/codewandler/agentcore/tools/filesystem"
 	"github.com/codewandler/agentcore/tools/shell"
@@ -22,6 +20,7 @@ import (
 	"github.com/codewandler/agentcore/tools/web"
 	llmproviders "github.com/codewandler/llmproviders"
 	"github.com/codewandler/llmproviders/registry"
+	"github.com/codewandler/miniagent/agent/display"
 	"github.com/codewandler/miniagent/agent/usage"
 	nanoid "github.com/matoous/go-nanoid/v2"
 )
@@ -44,78 +43,6 @@ type Agent struct {
 	systemOverride string
 	sessionID      string
 }
-
-// Option configures the Agent.
-type Option func(*Agent)
-
-// InferenceOption configures InferenceOptions.
-type InferenceOption func(*InferenceOptions)
-
-// InferenceOptions holds the model/inference parameters used for each LLM call.
-type InferenceOptions struct {
-	Model       string
-	MaxTokens   int
-	Thinking    unified.ThinkingMode
-	Effort      unified.Effort
-	Temperature float64
-}
-
-// DefaultInferenceOptions returns the default inference settings.
-func DefaultInferenceOptions() InferenceOptions {
-	return InferenceOptions{
-		Model:       "codex/gpt-5.4",
-		MaxTokens:   16_000,
-		Thinking:    unified.ThinkingModeOn,
-		Effort:      unified.EffortMedium,
-		Temperature: 0.1,
-	}
-}
-
-// NewInferenceOptions builds inference settings from defaults plus options.
-func NewInferenceOptions(opts ...InferenceOption) InferenceOptions {
-	cfg := DefaultInferenceOptions()
-	for _, opt := range opts {
-		opt(&cfg)
-	}
-	return cfg
-}
-
-// WithModel sets the model alias or full path.
-func WithModel(m string) InferenceOption { return func(o *InferenceOptions) { o.Model = m } }
-
-// WithMaxTokens sets the maximum output tokens per LLM call.
-func WithMaxTokens(n int) InferenceOption { return func(o *InferenceOptions) { o.MaxTokens = n } }
-
-// WithThinking sets the thinking mode.
-func WithThinking(m unified.ThinkingMode) InferenceOption {
-	return func(o *InferenceOptions) { o.Thinking = m }
-}
-
-// WithEffort sets the effort level.
-func WithEffort(e unified.Effort) InferenceOption { return func(o *InferenceOptions) { o.Effort = e } }
-
-// WithTemperature sets the sampling temperature.
-func WithTemperature(t float64) InferenceOption {
-	return func(o *InferenceOptions) { o.Temperature = t }
-}
-
-// WithInferenceOptions sets all inference options at once.
-func WithInferenceOptions(opts InferenceOptions) Option { return func(a *Agent) { a.inference = opts } }
-
-// WithMaxSteps sets the maximum agent loop iterations per turn (default: 30).
-func WithMaxSteps(n int) Option { return func(a *Agent) { a.maxSteps = n } }
-
-// WithOutput sets the output writer (default: os.Stdout).
-func WithOutput(w io.Writer) Option { return func(a *Agent) { a.out = w } }
-
-// WithWorkspace sets the working directory (default: current working directory).
-func WithWorkspace(dir string) Option { return func(a *Agent) { a.workspace = dir } }
-
-// WithToolTimeout sets the per-tool call timeout (default: 30s).
-func WithToolTimeout(d time.Duration) Option { return func(a *Agent) { a.toolTimeout = d } }
-
-// WithSystemOverride sets a custom system prompt body (default: built from workspace).
-func WithSystemOverride(prompt string) Option { return func(a *Agent) { a.systemOverride = prompt } }
 
 // New creates an Agent. All settings are configurable via Options.
 func New(service *llmproviders.Service, opts ...Option) *Agent {
@@ -227,26 +154,26 @@ func (a *Agent) RunTurn(ctx context.Context, turnID int, task string) error {
 		}
 		if done {
 			if stepsCompleted > 1 {
-				printTurnUsage(a.out, turnID, a.aggregateTurn(turnID))
+				display.PrintTurnUsage(a.out, turnID, a.aggregateTurn(turnID))
 			}
 			return nil
 		}
 		req = nextReq
 	}
 	if stepsCompleted > 1 {
-		printTurnUsage(a.out, turnID, a.aggregateTurn(turnID))
+		display.PrintTurnUsage(a.out, turnID, a.aggregateTurn(turnID))
 	}
 	return ErrMaxStepsReached
 }
 
 func (a *Agent) runStep(ctx context.Context, turnID, step int, stepsCompleted *int, req conversation.Request) (conversation.Request, bool, error) {
-	printStepHeader(a.out, step, a.maxSteps)
+	display.PrintStepHeader(a.out, step, a.maxSteps)
 	stream, err := a.session.Request(ctx, req)
 	if err != nil {
 		return conversation.Request{}, false, fmt.Errorf("request conversation stream: %w", err)
 	}
 
-	sd := newStepDisplay(a.out)
+	sd := display.NewStepDisplay(a.out)
 	var toolCalls []unified.ToolCall
 	var stepUsage usage.Record
 	var sawCompleted bool
@@ -279,14 +206,14 @@ func (a *Agent) runStep(ctx context.Context, turnID, step int, stepsCompleted *i
 	if ctx.Err() != nil {
 		return conversation.Request{}, false, ctx.Err()
 	}
-	printStepUsage(a.out, step, stepUsage, "")
+	display.PrintStepUsage(a.out, step, stepUsage, "")
 	if !sawCompleted {
 		return conversation.Request{}, false, errors.New("stream error")
 	}
 	*stepsCompleted++
 	if len(toolCalls) == 0 {
 		if stopReason == unified.StopReasonMaxTokens {
-			fmt.Fprintf(a.out, "\n%s⚠ model hit output token limit%s\n", ansiBrightYellow, ansiReset)
+			fmt.Fprintf(a.out, "\n%s⚠ model hit output token limit%s\n", display.BrightYellow, display.Reset)
 		}
 		return conversation.Request{}, true, nil
 	}
@@ -299,37 +226,15 @@ func (a *Agent) runStep(ctx context.Context, turnID, step int, stepsCompleted *i
 		ToolChoice(unified.ToolChoiceAuto{})
 	for _, tc := range toolCalls {
 		output, isError := a.executeTool(ctx, tc)
-		printToolResult(a.out, output, isError)
+		display.PrintToolResult(a.out, output, isError)
 		followup.ToolResult(tc.ID, output)
 	}
 	return followup.Build(), false, nil
 }
 
-func (a *Agent) executeTool(ctx context.Context, tc unified.ToolCall) (string, bool) {
-	for _, t := range a.activation.ActiveTools() {
-		if t.Name() != tc.Name {
-			continue
-		}
-		input, _ := json.Marshal(tc.Args)
-		toolCtx := &agentcoreToolContext{ctx: ctx, workspace: a.workspace, activation: a.activation, extra: make(map[string]any), sessionID: a.sessionID}
-		toolCtx.extra[toolmgmt.KeyActivationState] = a.activation
-		result, err := t.Execute(toolCtx, input)
-		if err != nil {
-			return err.Error(), true
-		}
-		return result.String(), result.IsError()
-	}
-	return fmt.Sprintf("tool not found: %s", tc.Name), true
-}
-
-func (a *Agent) activeToolSpecs() []unified.Tool {
-	active := a.activation.ActiveTools()
-	out := make([]unified.Tool, 0, len(active))
-	for _, t := range active {
-		out = append(out, convertUnifiedToolDefinition(t))
-	}
-	return out
-}
+// ---------------------------------------------------------------------------
+// Usage tracking helpers
+// ---------------------------------------------------------------------------
 
 func (a *Agent) recordTransportUsage(turnID int, u unified.StreamUsage) usage.Record {
 	providerName, modelName := a.providerAndModel(u)
@@ -437,50 +342,3 @@ func (a *Agent) aggregateTurn(turnID int) usage.Record {
 	}
 	return agg
 }
-
-func convertUnifiedToolDefinition(t acoreTool.Tool) unified.Tool {
-	schema := t.Schema()
-	raw, _ := json.Marshal(schema)
-	var params map[string]any
-	_ = json.Unmarshal(raw, &params)
-	delete(params, "$schema")
-	delete(params, "$id")
-	return unified.Tool{Name: t.Name(), Description: t.Description(), Parameters: params}
-}
-
-type agentcoreToolContext struct {
-	ctx        context.Context
-	workspace  string
-	activation interfaces.ActivationState
-	extra      map[string]any
-	sessionID  string
-}
-
-func (c *agentcoreToolContext) WorkDir() string       { return c.workspace }
-func (c *agentcoreToolContext) Extra() map[string]any { return c.extra }
-func (c *agentcoreToolContext) Deadline() (time.Time, bool) {
-	if c.ctx == nil {
-		return time.Time{}, false
-	}
-	return c.ctx.Deadline()
-}
-func (c *agentcoreToolContext) Done() <-chan struct{} {
-	if c.ctx == nil {
-		return nil
-	}
-	return c.ctx.Done()
-}
-func (c *agentcoreToolContext) Err() error {
-	if c.ctx == nil {
-		return nil
-	}
-	return c.ctx.Err()
-}
-func (c *agentcoreToolContext) Value(key any) any {
-	if c.ctx == nil {
-		return nil
-	}
-	return c.ctx.Value(key)
-}
-func (c *agentcoreToolContext) AgentID() string   { return "" }
-func (c *agentcoreToolContext) SessionID() string { return c.sessionID }
