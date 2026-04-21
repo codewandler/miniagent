@@ -60,6 +60,8 @@ func TestRunREPL_ShowsParamsBeforePrompt(t *testing.T) {
 	out := buf.String()
 	expectedModel := TestServiceID + "/" + TestModelID
 	assert.Contains(t, out, "model: "+expectedModel)
+	assert.Contains(t, out, "resolved_instance: test")
+	assert.Contains(t, out, "resolved_model: "+TestModelID)
 	assert.Contains(t, out, "thinking: on")
 	assert.Contains(t, out, "effort: medium")
 	assert.Less(t, strings.Index(out, "model: "+expectedModel), strings.Index(out, "miniagent> "))

@@ -24,6 +24,7 @@ tasks:
     desc: "Build & install miniagent into $GOPATH/bin (usually ~/go/bin)"
     dir: .
     cmds:
+      - go mod tidy
       - go install ./
 
   # ── _build-binary (internal) ──────────────────────────────────────────────

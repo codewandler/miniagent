@@ -78,3 +78,6 @@ func WithToolTimeout(d time.Duration) Option { return func(a *Agent) { a.toolTim
 
 // WithSystemOverride sets a custom system prompt body (default: built from workspace).
 func WithSystemOverride(prompt string) Option { return func(a *Agent) { a.systemOverride = prompt } }
+
+// WithVerbose enables verbose runtime diagnostics.
+func WithVerbose(verbose bool) Option { return func(a *Agent) { a.verbose = verbose } }

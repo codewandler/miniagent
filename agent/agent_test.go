@@ -49,10 +49,14 @@ func TestAgent_ResetClearsState(t *testing.T) {
 
 func TestAgent_ParamsSummary(t *testing.T) {
 	a := &Agent{
-		inference: DefaultInferenceOptions(),
+		inference:     DefaultInferenceOptions(),
+		provider:      &testFakeProvider{streamer: testFakeStreamer{}},
+		resolvedModel: TestModelID,
 	}
 	summary := a.ParamsSummary()
 	assert.Contains(t, summary, "model:")
+	assert.Contains(t, summary, "resolved_instance:")
+	assert.Contains(t, summary, "resolved_model:")
 	assert.Contains(t, summary, "thinking:")
 	assert.Contains(t, summary, "effort:")
 }
@@ -121,6 +125,34 @@ func TestRunTurn_StreamError(t *testing.T) {
 
 	err := a.RunTurn(context.Background(), 1, "oops")
 	require.Error(t, err)
+}
+
+func TestRunTurn_StreamErrorIncludesDiagnostics(t *testing.T) {
+	svc := newFakeService()
+	require.NotNil(t, svc, "newFakeService() returned nil")
+
+	a := New(svc,
+		WithWorkspace(t.TempDir()),
+		WithToolTimeout(5*time.Second),
+		WithMaxSteps(1),
+		WithVerbose(true),
+		WithInferenceOptions(InferenceOptions{
+			Model:     TestServiceID + "/" + TestModelID,
+			MaxTokens: 1000,
+		}),
+	)
+
+	a.provider = &testFakeProvider{streamer: testFakeStreamer{}}
+	a.resolvedModel = TestModelID
+	a.session = conversation.New(errStreamer{}, conversation.WithModel(TestModelID))
+
+	var buf bytes.Buffer
+	a.out = &buf
+
+	err := a.RunTurn(context.Background(), 1, "oops")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "provider=test")
+	assert.Contains(t, err.Error(), "model="+TestModelID)
 }
 
 type errStreamer struct{}

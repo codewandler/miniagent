@@ -38,6 +38,7 @@ func rootCmd() *cobra.Command {
 		toolTimeout  time.Duration
 		thinkingFlag string
 		effortFlag   string
+		verbose      bool
 	)
 	cmd := &cobra.Command{
 		Use:   "miniagent [task]",
@@ -55,7 +56,7 @@ With a positional argument it runs the task once and exits.`,
 			if effortFlag != "" {
 				inference.Effort = unified.Effort(effortFlag)
 			}
-			return execute(args, inference, maxSteps, workspace, systemPrompt, totalTimeout, toolTimeout)
+			return execute(args, inference, maxSteps, workspace, systemPrompt, totalTimeout, toolTimeout, verbose)
 		},
 	}
 	f := cmd.Flags()
@@ -69,6 +70,7 @@ With a positional argument it runs the task once and exits.`,
 	f.Float64Var(&inference.Temperature, "temperature", inference.Temperature, "Sampling temperature 0.0–2.0")
 	f.StringVar(&thinkingFlag, "thinking", string(inference.Thinking), "Thinking mode: auto|on|off")
 	f.StringVar(&effortFlag, "effort", string(inference.Effort), "Effort level: low|medium|high|max")
+	f.BoolVarP(&verbose, "verbose", "v", false, "Show resolved provider/model diagnostics")
 	_ = cmd.RegisterFlagCompletionFunc("model", completeModelFlag)
 
 	// Add llmproviders CLI as a subcommand group: miniagent llm <subcommand>
@@ -191,7 +193,7 @@ func containsFold(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-func execute(args []string, inference InferenceConfig, maxSteps int, workspace, systemPrompt string, totalTimeout, toolTimeout time.Duration) error {
+func execute(args []string, inference InferenceConfig, maxSteps int, workspace, systemPrompt string, totalTimeout, toolTimeout time.Duration, verbose bool) error {
 	if workspace == "" {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -210,6 +212,7 @@ func execute(args []string, inference InferenceConfig, maxSteps int, workspace, 
 		agent.WithSystemOverride(systemPrompt),
 		agent.WithInferenceOptions(inference),
 		agent.WithMaxSteps(maxSteps),
+		agent.WithVerbose(verbose),
 	)
 	if len(args) == 1 {
 		ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)

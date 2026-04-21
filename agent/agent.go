@@ -31,6 +31,7 @@ import (
 type Agent struct {
 	service        *llmproviders.Service
 	provider       registry.Provider
+	resolvedModel  string
 	session        *conversation.Session
 	tracker        *usage.Tracker
 	allTools       []acoreTool.Tool
@@ -42,6 +43,7 @@ type Agent struct {
 	toolTimeout    time.Duration
 	systemOverride string
 	sessionID      string
+	verbose        bool
 }
 
 // New creates an Agent. All settings are configurable via Options.
@@ -80,6 +82,7 @@ func (a *Agent) initSession() error {
 		return fmt.Errorf("failed to get provider for model %q: %w", a.inference.Model, err)
 	}
 	a.provider = provider
+	a.resolvedModel = resolvedModel
 
 	prompt := BuildSystemPrompt(a.workspace, a.systemOverride)
 	a.session = provider.CreateSession(
@@ -118,6 +121,13 @@ func (a *Agent) Out() io.Writer { return a.out }
 
 // ParamsSummary returns a short human-readable summary of the active model parameters.
 func (a *Agent) ParamsSummary() string {
+	providerName := ""
+	if a.provider != nil {
+		providerName = a.provider.Name()
+	}
+	if providerName != "" || a.resolvedModel != "" {
+		return fmt.Sprintf("model: %s  resolved_instance: %s  resolved_model: %s  thinking: %s  effort: %s", a.inference.Model, providerName, a.resolvedModel, a.inference.Thinking, a.inference.Effort)
+	}
 	return fmt.Sprintf("model: %s  thinking: %s  effort: %s", a.inference.Model, a.inference.Thinking, a.inference.Effort)
 }
 
@@ -145,6 +155,14 @@ func (a *Agent) RunTurn(ctx context.Context, turnID int, task string) error {
 		ToolChoice(unified.ToolChoiceAuto{}).
 		User(task).
 		Build()
+
+	if a.verbose {
+		providerName := ""
+		if a.provider != nil {
+			providerName = a.provider.Name()
+		}
+		display.PrintResolvedModel(a.out, fmt.Sprintf("input=%s  instance=%s  resolved=%s", a.inference.Model, providerName, a.resolvedModel))
+	}
 
 	var stepsCompleted int
 	for step := 1; step <= a.maxSteps; step++ {
@@ -197,9 +215,9 @@ func (a *Agent) runStep(ctx context.Context, turnID, step int, stepsCompleted *i
 		case conversation.ErrorEvent:
 			sd.End()
 			if e.Err != nil {
-				return conversation.Request{}, false, e.Err
+				return conversation.Request{}, false, fmt.Errorf("provider=%s model=%s step=%d: %w", a.providerName(), a.resolvedModel, step, e.Err)
 			}
-			return conversation.Request{}, false, errors.New("stream error")
+			return conversation.Request{}, false, fmt.Errorf("provider=%s model=%s step=%d: stream error", a.providerName(), a.resolvedModel, step)
 		}
 	}
 	sd.End()
@@ -208,7 +226,7 @@ func (a *Agent) runStep(ctx context.Context, turnID, step int, stepsCompleted *i
 	}
 	display.PrintStepUsage(a.out, step, stepUsage, "")
 	if !sawCompleted {
-		return conversation.Request{}, false, errors.New("stream error")
+		return conversation.Request{}, false, fmt.Errorf("provider=%s model=%s step=%d: stream ended without completed event (or provider returned an empty stream without terminal events)", a.providerName(), a.resolvedModel, step)
 	}
 	*stepsCompleted++
 	if len(toolCalls) == 0 {
@@ -319,6 +337,13 @@ func mergeUsageRecord(dst, src usage.Record) usage.Record {
 		}
 	}
 	return dst
+}
+
+func (a *Agent) providerName() string {
+	if a.provider == nil {
+		return ""
+	}
+	return a.provider.Name()
 }
 
 // aggregateTurn sums all usage records for a given turn ID.

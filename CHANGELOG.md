@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.2.8 — 2026-04-21
+
+Improved runtime diagnostics, upgraded to llmproviders service layer, and rewrote system prompt for tool-first workflows.
+
+### Added
+- `--verbose` / `-v` flag to print resolved provider and model before each turn
+- `WithVerbose` functional option on `Agent`
+- `resolvedModel` field on `Agent` to track the provider-resolved model name
+- `providerName()` helper for diagnostic formatting
+- Error messages now include `provider=`, `model=`, and `step=` context for easier debugging
+- Test for stream-error diagnostic output (`TestRunTurn_StreamErrorIncludesDiagnostics`)
+- `ParamsSummary` now shows `resolved_instance` and `resolved_model` when available
+- `go mod tidy` step before `go install` in Taskfile
+
+### Changed
+- Rewrote system prompt to lead with specialized built-in tools instead of bash, with explicit tool→parameter mappings, a WRONG vs RIGHT section, and demoted bash to "only for running programs"
+- Migrated from `llmproviders v0.0.0` to `v0.5.1`; upgraded `agentapis` to `v0.9.1`, `glamour` to `v1.0.0`, `llm` to `v0.40.0`, and bumped ~15 transitive dependencies
+- Removed stale `github.com/codewandler/llm` replace directive from `go.mod`
+
+### Removed
+- Deleted 5 leftover debug/scratch files (`.tmp_debug_stream.go`, `stream_debug_test.go`, `stream_debug_list_test.go`, `stream_debug_toolflow_test.go`, `agent/debug_real_stream_test.go`)
+
 ## v0.2.7 — 2026-04-21
 
 Restructured agent package: created dedicated `display/` package, split large files, and removed dead code.
