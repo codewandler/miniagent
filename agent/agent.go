@@ -445,7 +445,7 @@ func convertUnifiedToolDefinition(t acoreTool.Tool) unified.Tool {
 	_ = json.Unmarshal(raw, &params)
 	delete(params, "$schema")
 	delete(params, "$id")
-	return unified.Tool{Name: t.Name(), Description: t.Description(), Parameters: params, Strict: true}
+	return unified.Tool{Name: t.Name(), Description: t.Description(), Parameters: params}
 }
 
 type agentcoreToolContext struct {
