@@ -93,6 +93,7 @@ func (a *Agent) initRuntime() error {
 			EnableLocalClaude: true,
 			EnableLocalCodex:  true,
 			UseModelDB:        true,
+			DynamicModels:     true,
 			SourceAPI:         a.sourceAPI,
 			Intents: []adapterconfig.AutoIntent{{
 				Name:      a.inference.Model,

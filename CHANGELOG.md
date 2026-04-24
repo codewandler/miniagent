@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.2 — 2026-04-24
+
+### Changed
+- Updated to `github.com/codewandler/llmadapter v0.44.0`
+- Enabled dynamic model passthrough routes alongside the default intent route, so explicit model IDs can be supplied directly
+
 ## v0.3.1 — 2026-04-24
 
 Follow-up cleanup after the agentsdk/llmadapter runtime migration.
