@@ -8,61 +8,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codewandler/agentapis/api/unified"
-	"github.com/codewandler/agentapis/client"
-	"github.com/codewandler/agentapis/conversation"
-	llmproviders "github.com/codewandler/llmproviders"
-	"github.com/codewandler/llmproviders/registry"
+	"github.com/codewandler/llmadapter/unified"
 	"github.com/codewandler/miniagent/agent"
 	"github.com/stretchr/testify/require"
 )
 
-type fakeStreamer struct{ n int }
+type fakeClient struct{ n int }
 
-func (f *fakeStreamer) Stream(_ context.Context, _ unified.Request) (<-chan client.StreamResult, error) {
-	ch := make(chan client.StreamResult, 2)
+func (f *fakeClient) Request(_ context.Context, _ unified.Request) (<-chan unified.Event, error) {
+	ch := make(chan unified.Event, 2)
 	go func() {
 		defer close(ch)
 		if f.n == 0 {
-			ch <- client.StreamResult{Event: unified.StreamEvent{Type: unified.StreamEventContentDelta, ContentDelta: &unified.ContentDelta{ContentBase: unified.ContentBase{Kind: unified.ContentKindText, Data: "done"}}}}
-			ch <- client.StreamResult{Event: unified.StreamEvent{Type: unified.StreamEventCompleted, Completed: &unified.Completed{StopReason: unified.StopReasonEndTurn}}}
+			ch <- unified.TextDeltaEvent{Text: "done"}
+			ch <- unified.CompletedEvent{FinishReason: unified.FinishReasonStop}
 		}
 		f.n++
 	}()
 	return ch, nil
-}
-
-type fakeProvider struct {
-	streamer conversation.Streamer
-}
-
-func (fp *fakeProvider) Name() string { return "fake" }
-func (fp *fakeProvider) Stream(ctx context.Context, req unified.Request) (<-chan client.StreamResult, error) {
-	return fp.streamer.Stream(ctx, req)
-}
-func (fp *fakeProvider) CreateSession(opts ...conversation.Option) *conversation.Session {
-	return conversation.New(fp.streamer, opts...)
-}
-
-// Uses "anthropic" ServiceID and "claude-sonnet-4-6" model to pass catalog validation.
-func newFakeService() *llmproviders.Service {
-	reg := registry.New()
-	reg.Register(registry.Registration{
-		InstanceName: "anthropic",
-		ServiceID:    "anthropic",
-		Order:        1,
-		Detect: func(ctx context.Context) (bool, error) {
-			return true, nil
-		},
-		Build: func(ctx context.Context, cfg registry.BuildConfig) (registry.Provider, error) {
-			return &fakeProvider{streamer: &fakeStreamer{}}, nil
-		},
-	})
-
-	svc, _ := llmproviders.NewService(
-		llmproviders.WithRegistry(reg),
-	)
-	return svc
 }
 
 func TestMarkdownRendering_StableFenceBlock(t *testing.T) {
@@ -70,8 +33,7 @@ func TestMarkdownRendering_StableFenceBlock(t *testing.T) {
 		t.Skip("set MINIAGENT_INTEGRATION=1 to run integration tests")
 	}
 	var buf bytes.Buffer
-	svc := newFakeService()
-	a := agent.New(svc, agent.WithWorkspace(t.TempDir()), agent.WithToolTimeout(5*time.Second), agent.WithOutput(&buf))
+	a := agent.New(agent.WithClient(&fakeClient{}), agent.WithWorkspace(t.TempDir()), agent.WithToolTimeout(5*time.Second), agent.WithOutput(&buf))
 	err := a.RunTurn(context.Background(), 1, "show code")
 	require.NoError(t, err)
 	out := buf.String()

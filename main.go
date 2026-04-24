@@ -10,10 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codewandler/agentapis/api/unified"
-	"github.com/codewandler/llmproviders"
-	"github.com/codewandler/llmproviders/cli"
-	"github.com/codewandler/llmproviders/registry/auto"
+	"github.com/codewandler/llmadapter/unified"
 	"github.com/codewandler/miniagent/agent"
 	"github.com/codewandler/miniagent/agent/display"
 	"github.com/spf13/cobra"
@@ -51,10 +48,10 @@ With a positional argument it runs the task once and exits.`,
 		SilenceErrors: true,
 		RunE: func(_ *cobra.Command, args []string) error {
 			if thinkingFlag != "" {
-				inference.Thinking = unified.ThinkingMode(thinkingFlag)
+				inference.Thinking = agent.ThinkingMode(thinkingFlag)
 			}
 			if effortFlag != "" {
-				inference.Effort = unified.Effort(effortFlag)
+				inference.Effort = unified.ReasoningEffort(effortFlag)
 			}
 			return execute(args, inference, maxSteps, workspace, systemPrompt, totalTimeout, toolTimeout, verbose)
 		},
@@ -69,17 +66,10 @@ With a positional argument it runs the task once and exits.`,
 	f.DurationVar(&toolTimeout, "tool-timeout", 30*time.Second, "Per-tool call timeout")
 	f.Float64Var(&inference.Temperature, "temperature", inference.Temperature, "Sampling temperature 0.0–2.0")
 	f.StringVar(&thinkingFlag, "thinking", string(inference.Thinking), "Thinking mode: auto|on|off")
-	f.StringVar(&effortFlag, "effort", string(inference.Effort), "Effort level: low|medium|high|max")
+	f.StringVar(&effortFlag, "effort", string(inference.Effort), "Effort level: low|medium|high")
 	f.BoolVarP(&verbose, "verbose", "v", false, "Show resolved provider/model diagnostics")
 	_ = cmd.RegisterFlagCompletionFunc("model", completeModelFlag)
 
-	// Add llmproviders CLI as a subcommand group: miniagent llm <subcommand>
-	cmd.AddCommand(cli.NewLLMCommand(cli.LLMCommandOptions{
-		Use: "llm",
-		LoadService: func(ctx context.Context) (*llmproviders.Service, error) {
-			return createProvider(ctx)
-		},
-	}))
 	cmd.AddCommand(completionCmd(cmd))
 	return cmd
 }
@@ -176,12 +166,9 @@ func completionInstallPath(shell, override string) (string, error) {
 }
 
 func completeModelFlag(cmd *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	svc, err := createProvider(cmd.Context())
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
+	models := []string{"default", "fast", "powerful", "codex/gpt-5.4"}
 	var matches []string
-	for _, m := range svc.Models("") {
+	for _, m := range models {
 		if containsFold(m, toComplete) {
 			matches = append(matches, m)
 		}
@@ -202,11 +189,7 @@ func execute(args []string, inference InferenceConfig, maxSteps int, workspace, 
 		workspace = wd
 	}
 	ctx := context.Background()
-	svc, err := createProvider(ctx)
-	if err != nil {
-		return err
-	}
-	a := agent.New(svc,
+	a, err := agent.NewE(
 		agent.WithWorkspace(workspace),
 		agent.WithToolTimeout(toolTimeout),
 		agent.WithSystemOverride(systemPrompt),
@@ -214,6 +197,9 @@ func execute(args []string, inference InferenceConfig, maxSteps int, workspace, 
 		agent.WithMaxSteps(maxSteps),
 		agent.WithVerbose(verbose),
 	)
+	if err != nil {
+		return err
+	}
 	if len(args) == 1 {
 		ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 		if totalTimeout > 0 {
@@ -230,9 +216,4 @@ func execute(args []string, inference InferenceConfig, maxSteps int, workspace, 
 		return err
 	}
 	return agent.RunREPL(ctx, a, os.Stdin)
-}
-
-func createProvider(_ context.Context) (*llmproviders.Service, error) {
-	reg := auto.NewAutoDetectRegistry()
-	return llmproviders.NewService(llmproviders.WithRegistry(reg))
 }

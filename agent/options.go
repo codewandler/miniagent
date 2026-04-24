@@ -4,7 +4,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/codewandler/agentapis/api/unified"
+	"github.com/codewandler/llmadapter/unified"
 )
 
 // Option configures the Agent.
@@ -17,18 +17,26 @@ type InferenceOption func(*InferenceOptions)
 type InferenceOptions struct {
 	Model       string
 	MaxTokens   int
-	Thinking    unified.ThinkingMode
-	Effort      unified.Effort
+	Thinking    ThinkingMode
+	Effort      unified.ReasoningEffort
 	Temperature float64
 }
+
+type ThinkingMode string
+
+const (
+	ThinkingModeAuto ThinkingMode = "auto"
+	ThinkingModeOn   ThinkingMode = "on"
+	ThinkingModeOff  ThinkingMode = "off"
+)
 
 // DefaultInferenceOptions returns the default inference settings.
 func DefaultInferenceOptions() InferenceOptions {
 	return InferenceOptions{
 		Model:       "codex/gpt-5.4",
 		MaxTokens:   16_000,
-		Thinking:    unified.ThinkingModeOn,
-		Effort:      unified.EffortMedium,
+		Thinking:    ThinkingModeOn,
+		Effort:      unified.ReasoningEffortMedium,
 		Temperature: 0.1,
 	}
 }
@@ -49,12 +57,14 @@ func WithModel(m string) InferenceOption { return func(o *InferenceOptions) { o.
 func WithMaxTokens(n int) InferenceOption { return func(o *InferenceOptions) { o.MaxTokens = n } }
 
 // WithThinking sets the thinking mode.
-func WithThinking(m unified.ThinkingMode) InferenceOption {
+func WithThinking(m ThinkingMode) InferenceOption {
 	return func(o *InferenceOptions) { o.Thinking = m }
 }
 
 // WithEffort sets the effort level.
-func WithEffort(e unified.Effort) InferenceOption { return func(o *InferenceOptions) { o.Effort = e } }
+func WithEffort(e unified.ReasoningEffort) InferenceOption {
+	return func(o *InferenceOptions) { o.Effort = e }
+}
 
 // WithTemperature sets the sampling temperature.
 func WithTemperature(t float64) InferenceOption {
@@ -81,3 +91,7 @@ func WithSystemOverride(prompt string) Option { return func(a *Agent) { a.system
 
 // WithVerbose enables verbose runtime diagnostics.
 func WithVerbose(verbose bool) Option { return func(a *Agent) { a.verbose = verbose } }
+
+// WithClient injects a llmadapter client. Production callers should normally
+// rely on auto-detection instead.
+func WithClient(client unified.Client) Option { return func(a *Agent) { a.client = client } }

@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/codewandler/miniagent/agent/usage"
+	coreusage "github.com/codewandler/agentsdk/usage"
+	"github.com/codewandler/llmadapter/unified"
 )
 
 // FormatTokenCount formats an integer with thin-space thousands separators.
@@ -67,14 +68,14 @@ func CompactCount(n int) string {
 //	in: 12.5k  out: 1.2k  cost: $0.0032
 //
 // Shared by step, turn, and session usage display.
-func FormatUsageParts(rec usage.Record) string {
+func FormatUsageParts(rec coreusage.Record) string {
 	var parts []string
 
 	// ── Input section ──
-	totalIn := rec.Tokens.TotalInput()
-	cacheRead := rec.Tokens.Count(usage.KindCacheRead)
-	cacheWrite := rec.Tokens.Count(usage.KindCacheWrite)
-	nonCache := rec.Tokens.Count(usage.KindInput)
+	totalIn := rec.Usage.Tokens.InputTotal()
+	cacheRead := rec.Usage.Tokens.Count(unified.TokenKindInputCacheRead)
+	cacheWrite := rec.Usage.Tokens.Count(unified.TokenKindInputCacheWrite)
+	nonCache := rec.Usage.Tokens.Count(unified.TokenKindInputNew)
 	hasCaching := cacheRead > 0 || cacheWrite > 0
 
 	if totalIn > 0 {
@@ -98,8 +99,8 @@ func FormatUsageParts(rec usage.Record) string {
 	}
 
 	// ── Output section ──
-	output := rec.Tokens.Count(usage.KindOutput)
-	reasoning := rec.Tokens.Count(usage.KindReasoning)
+	output := rec.Usage.Tokens.Count(unified.TokenKindOutput)
+	reasoning := rec.Usage.Tokens.Count(unified.TokenKindOutputReasoning)
 	if output > 0 {
 		parts = append(parts, fmt.Sprintf("out: %s", CompactCount(output)))
 	}
@@ -108,7 +109,7 @@ func FormatUsageParts(rec usage.Record) string {
 	}
 
 	// ── Cost ──
-	if cs := FormatCost(rec.Cost.Total); cs != "" {
+	if cs := FormatCost(rec.Usage.Costs.Total()); cs != "" {
 		parts = append(parts, fmt.Sprintf("cost: %s", cs))
 	}
 	return strings.Join(parts, "  ")

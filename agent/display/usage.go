@@ -5,7 +5,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/codewandler/miniagent/agent/usage"
+	coreusage "github.com/codewandler/agentsdk/usage"
+	"github.com/codewandler/llmadapter/unified"
 )
 
 // PrintStepHeader prints the step header with step number.
@@ -37,7 +38,7 @@ func PrintToolResult(w io.Writer, output string, isError bool) {
 }
 
 // PrintStepUsage prints usage statistics for a single step.
-func PrintStepUsage(w io.Writer, step int, rec usage.Record, model string) {
+func PrintStepUsage(w io.Writer, step int, rec coreusage.Record, model string) {
 	parts := FormatUsageParts(rec)
 	modelPart := ""
 	if model != "" {
@@ -54,7 +55,7 @@ func PrintStepUsage(w io.Writer, step int, rec usage.Record, model string) {
 	printStepUsageDetails(w, rec)
 }
 
-func printStepUsageDetails(w io.Writer, rec usage.Record) {
+func printStepUsageDetails(w io.Writer, rec coreusage.Record) {
 	if parts := stepUsageDimsParts(rec); len(parts) > 0 {
 		fmt.Fprintf(w, "%s   dims: %s%s\n", Dim, strings.Join(parts, " "), Reset)
 	}
@@ -66,7 +67,7 @@ func printStepUsageDetails(w io.Writer, rec usage.Record) {
 	}
 }
 
-func stepUsageDimsParts(rec usage.Record) []string {
+func stepUsageDimsParts(rec coreusage.Record) []string {
 	var parts []string
 	if rec.Dims.Provider != "" {
 		parts = append(parts, fmt.Sprintf("provider=%s", rec.Dims.Provider))
@@ -89,57 +90,57 @@ func stepUsageDimsParts(rec usage.Record) []string {
 	return parts
 }
 
-func stepUsageUsageParts(rec usage.Record) []string {
+func stepUsageUsageParts(rec coreusage.Record) []string {
 	var parts []string
-	if v := rec.Tokens.TotalInput(); v != 0 {
+	if v := rec.Usage.Tokens.InputTotal(); v != 0 {
 		parts = append(parts, fmt.Sprintf("total_input=%d", v))
 	}
-	if v := rec.Tokens.Count(usage.KindInput); v != 0 {
+	if v := rec.Usage.Tokens.Count(unified.TokenKindInputNew); v != 0 {
 		parts = append(parts, fmt.Sprintf("input=%d", v))
 	}
-	if v := rec.Tokens.Count(usage.KindCacheRead); v != 0 {
+	if v := rec.Usage.Tokens.Count(unified.TokenKindInputCacheRead); v != 0 {
 		parts = append(parts, fmt.Sprintf("cache_read=%d", v))
 	}
-	if v := rec.Tokens.Count(usage.KindCacheWrite); v != 0 {
+	if v := rec.Usage.Tokens.Count(unified.TokenKindInputCacheWrite); v != 0 {
 		parts = append(parts, fmt.Sprintf("cache_write=%d", v))
 	}
-	if v := rec.Tokens.TotalOutput(); v != 0 {
+	if v := rec.Usage.Tokens.OutputTotal(); v != 0 {
 		parts = append(parts, fmt.Sprintf("total_output=%d", v))
 	}
-	if v := rec.Tokens.Count(usage.KindOutput); v != 0 {
+	if v := rec.Usage.Tokens.Count(unified.TokenKindOutput); v != 0 {
 		parts = append(parts, fmt.Sprintf("output=%d", v))
 	}
-	if v := rec.Tokens.Count(usage.KindReasoning); v != 0 {
+	if v := rec.Usage.Tokens.Count(unified.TokenKindOutputReasoning); v != 0 {
 		parts = append(parts, fmt.Sprintf("reasoning=%d", v))
 	}
 	return parts
 }
 
-func stepUsageCostParts(rec usage.Record) []string {
+func stepUsageCostParts(rec coreusage.Record) []string {
 	var parts []string
-	if v := rec.Cost.Total; v != 0 {
+	if v := rec.Usage.Costs.Total(); v != 0 {
 		parts = append(parts, fmt.Sprintf("total=%.6f", v))
 	}
-	if v := rec.Cost.Input; v != 0 {
+	if v := rec.Usage.Costs.ByKind(unified.CostKindInput); v != 0 {
 		parts = append(parts, fmt.Sprintf("input=%.6f", v))
 	}
-	if v := rec.Cost.CacheRead; v != 0 {
+	if v := rec.Usage.Costs.ByKind(unified.CostKindInputCacheRead); v != 0 {
 		parts = append(parts, fmt.Sprintf("cache_read=%.6f", v))
 	}
-	if v := rec.Cost.CacheWrite; v != 0 {
+	if v := rec.Usage.Costs.ByKind(unified.CostKindInputCacheWrite); v != 0 {
 		parts = append(parts, fmt.Sprintf("cache_write=%.6f", v))
 	}
-	if v := rec.Cost.Output; v != 0 {
+	if v := rec.Usage.Costs.ByKind(unified.CostKindOutput); v != 0 {
 		parts = append(parts, fmt.Sprintf("output=%.6f", v))
 	}
-	if v := rec.Cost.Reasoning; v != 0 {
+	if v := rec.Usage.Costs.ByKind(unified.CostKindReasoning); v != 0 {
 		parts = append(parts, fmt.Sprintf("reasoning=%.6f", v))
 	}
 	return parts
 }
 
 // PrintTurnUsage prints usage statistics for a turn.
-func PrintTurnUsage(w io.Writer, turnID int, rec usage.Record) {
+func PrintTurnUsage(w io.Writer, turnID int, rec coreusage.Record) {
 	parts := FormatUsageParts(rec)
 	if parts == "" {
 		return
@@ -149,7 +150,7 @@ func PrintTurnUsage(w io.Writer, turnID int, rec usage.Record) {
 
 // PrintSessionUsage prints the session-total usage line.
 // Always emits the separator so REPL exit is visible even with no usage.
-func PrintSessionUsage(w io.Writer, sessionID string, rec usage.Record) {
+func PrintSessionUsage(w io.Writer, sessionID string, rec coreusage.Record) {
 	parts := FormatUsageParts(rec)
 	if parts == "" {
 		fmt.Fprintf(w, "── session %s ──\n", sessionID)

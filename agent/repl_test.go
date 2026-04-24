@@ -14,7 +14,8 @@ func newREPLTestAgent(t *testing.T) (*Agent, *bytes.Buffer) {
 	t.Helper()
 	var buf bytes.Buffer
 	testModel := TestServiceID + "/" + TestModelID
-	a := New(newFakeService(),
+	a := New(
+		WithClient(newFakeClient()),
 		WithWorkspace(t.TempDir()),
 		WithToolTimeout(5*time.Second),
 		WithOutput(&buf),
@@ -25,6 +26,8 @@ func newREPLTestAgent(t *testing.T) (*Agent, *bytes.Buffer) {
 			Effort:    "medium",
 		}),
 	)
+	a.resolvedProvider = TestServiceID
+	a.resolvedModel = TestModelID
 	return a, &buf
 }
 

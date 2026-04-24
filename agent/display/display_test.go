@@ -4,7 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/codewandler/miniagent/agent/usage"
+	coreusage "github.com/codewandler/agentsdk/usage"
+	"github.com/codewandler/llmadapter/unified"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -65,9 +66,11 @@ func TestTruncate(t *testing.T) {
 
 func TestFormatUsageParts(t *testing.T) {
 	t.Run("all fields with cache", func(t *testing.T) {
-		rec := usage.Record{
-			Tokens: usage.TokenItems{{Kind: usage.KindInput, Count: 1204}, {Kind: usage.KindCacheRead, Count: 8432}, {Kind: usage.KindOutput, Count: 87}},
-			Cost:   usage.Cost{Total: 0.0023},
+		rec := coreusage.Record{
+			Usage: unified.Usage{
+				Tokens: unified.TokenItems{{Kind: unified.TokenKindInputNew, Count: 1204}, {Kind: unified.TokenKindInputCacheRead, Count: 8432}, {Kind: unified.TokenKindOutput, Count: 87}},
+				Costs:  unified.CostItems{{Kind: unified.CostKindInput, Amount: 0.0023}},
+			},
 		}
 		parts := FormatUsageParts(rec)
 		assert.Contains(t, parts, "in: 9.6k")
@@ -78,7 +81,7 @@ func TestFormatUsageParts(t *testing.T) {
 	})
 
 	t.Run("no cache plain input output", func(t *testing.T) {
-		rec := usage.Record{Tokens: usage.TokenItems{{Kind: usage.KindInput, Count: 100}, {Kind: usage.KindOutput, Count: 50}}}
+		rec := coreusage.Record{Usage: unified.Usage{Tokens: unified.TokenItems{{Kind: unified.TokenKindInputNew, Count: 100}, {Kind: unified.TokenKindOutput, Count: 50}}}}
 		parts := FormatUsageParts(rec)
 		assert.Contains(t, parts, "in: 100")
 		assert.Contains(t, parts, "out: 50")
@@ -87,7 +90,7 @@ func TestFormatUsageParts(t *testing.T) {
 	})
 
 	t.Run("cache read and write with non-cache input", func(t *testing.T) {
-		rec := usage.Record{Tokens: usage.TokenItems{{Kind: usage.KindInput, Count: 200}, {Kind: usage.KindCacheRead, Count: 300}, {Kind: usage.KindCacheWrite, Count: 100}, {Kind: usage.KindOutput, Count: 50}}}
+		rec := coreusage.Record{Usage: unified.Usage{Tokens: unified.TokenItems{{Kind: unified.TokenKindInputNew, Count: 200}, {Kind: unified.TokenKindInputCacheRead, Count: 300}, {Kind: unified.TokenKindInputCacheWrite, Count: 100}, {Kind: unified.TokenKindOutput, Count: 50}}}}
 		parts := FormatUsageParts(rec)
 		assert.Contains(t, parts, "in: 600")
 		assert.Contains(t, parts, "cache_r: 300 50.0%")
@@ -96,7 +99,7 @@ func TestFormatUsageParts(t *testing.T) {
 	})
 
 	t.Run("cache write only cold start", func(t *testing.T) {
-		rec := usage.Record{Tokens: usage.TokenItems{{Kind: usage.KindInput, Count: 500}, {Kind: usage.KindCacheWrite, Count: 400}, {Kind: usage.KindOutput, Count: 60}}}
+		rec := coreusage.Record{Usage: unified.Usage{Tokens: unified.TokenItems{{Kind: unified.TokenKindInputNew, Count: 500}, {Kind: unified.TokenKindInputCacheWrite, Count: 400}, {Kind: unified.TokenKindOutput, Count: 60}}}}
 		parts := FormatUsageParts(rec)
 		assert.Contains(t, parts, "in: 900")
 		assert.Contains(t, parts, "cache_w: 400")
@@ -105,7 +108,7 @@ func TestFormatUsageParts(t *testing.T) {
 	})
 
 	t.Run("output and reasoning are displayed separately without overlap", func(t *testing.T) {
-		rec := usage.Record{Tokens: usage.TokenItems{{Kind: usage.KindOutput, Count: 21}, {Kind: usage.KindReasoning, Count: 9}}}
+		rec := coreusage.Record{Usage: unified.Usage{Tokens: unified.TokenItems{{Kind: unified.TokenKindOutput, Count: 21}, {Kind: unified.TokenKindOutputReasoning, Count: 9}}}}
 		parts := FormatUsageParts(rec)
 		assert.Contains(t, parts, "out: 21")
 		assert.Contains(t, parts, "reason: 9")
@@ -113,7 +116,7 @@ func TestFormatUsageParts(t *testing.T) {
 	})
 
 	t.Run("empty record", func(t *testing.T) {
-		assert.Equal(t, "", FormatUsageParts(usage.Record{}))
+		assert.Equal(t, "", FormatUsageParts(coreusage.Record{}))
 	})
 }
 

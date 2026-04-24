@@ -2,14 +2,9 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
 	"time"
 
-	"github.com/codewandler/agentapis/api/unified"
-	"github.com/codewandler/agentsdk/interfaces"
-	acoreTool "github.com/codewandler/agentsdk/tool"
+	"github.com/codewandler/agentsdk/activation"
 	"github.com/codewandler/agentsdk/tools/toolmgmt"
 )
 
@@ -18,69 +13,23 @@ const (
 	timedOutToolResult = "[Timed out]"
 )
 
-func (a *Agent) executeTool(ctx context.Context, tc unified.ToolCall) (string, bool) {
-	for _, t := range a.activation.ActiveTools() {
-		if t.Name() != tc.Name {
-			continue
-		}
-		input, _ := json.Marshal(tc.Args)
-		toolCtx := &agentcoreToolContext{ctx: ctx, workspace: a.workspace, activation: a.activation, extra: make(map[string]any), sessionID: a.sessionID}
-		toolCtx.extra[toolmgmt.KeyActivationState] = a.activation
-		result, err := t.Execute(toolCtx, input)
-		if err != nil {
-			return toolResultFromError(ctx, err)
-		}
-		if ctx != nil {
-			if err := ctx.Err(); errors.Is(err, context.Canceled) {
-				return canceledToolResult, true
-			} else if errors.Is(err, context.DeadlineExceeded) {
-				return timedOutToolResult, true
-			}
-		}
-		return result.String(), result.IsError()
+func (a *Agent) newToolCtx(ctx context.Context) *agentcoreToolContext {
+	toolCtx := &agentcoreToolContext{
+		ctx:        ctx,
+		workspace:  a.workspace,
+		activation: a.activation,
+		extra:      make(map[string]any),
+		sessionID:  a.sessionID,
 	}
-	return fmt.Sprintf("tool not found: %s", tc.Name), true
-}
-
-func toolResultFromError(ctx context.Context, err error) (string, bool) {
-	switch {
-	case errors.Is(err, context.Canceled):
-		return canceledToolResult, true
-	case errors.Is(err, context.DeadlineExceeded):
-		return timedOutToolResult, true
-	case ctx != nil && errors.Is(ctx.Err(), context.Canceled):
-		return canceledToolResult, true
-	case ctx != nil && errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return timedOutToolResult, true
-	default:
-		return err.Error(), true
-	}
-}
-
-func (a *Agent) activeToolSpecs() []unified.Tool {
-	active := a.activation.ActiveTools()
-	out := make([]unified.Tool, 0, len(active))
-	for _, t := range active {
-		out = append(out, convertUnifiedToolDefinition(t))
-	}
-	return out
-}
-
-func convertUnifiedToolDefinition(t acoreTool.Tool) unified.Tool {
-	schema := t.Schema()
-	raw, _ := json.Marshal(schema)
-	var params map[string]any
-	_ = json.Unmarshal(raw, &params)
-	delete(params, "$schema")
-	delete(params, "$id")
-	return unified.Tool{Name: t.Name(), Description: t.Description(), Parameters: params}
+	toolCtx.extra[toolmgmt.KeyActivationState] = a.activation
+	return toolCtx
 }
 
 // agentcoreToolContext adapts context.Context for agentsdk tools.
 type agentcoreToolContext struct {
 	ctx        context.Context
 	workspace  string
-	activation interfaces.ActivationState
+	activation activation.State
 	extra      map[string]any
 	sessionID  string
 }

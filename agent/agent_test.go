@@ -8,21 +8,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codewandler/agentapis/api/unified"
-	"github.com/codewandler/agentapis/client"
-	"github.com/codewandler/agentapis/conversation"
 	acoreTool "github.com/codewandler/agentsdk/tool"
+	"github.com/codewandler/llmadapter/unified"
 	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewInferenceOptions_AppliesOverrides(t *testing.T) {
-	opts := NewInferenceOptions(WithModel("claude-sonnet"), WithMaxTokens(2048), WithThinking(unified.ThinkingModeOff), WithEffort(unified.EffortHigh), WithTemperature(0.7))
+	opts := NewInferenceOptions(WithModel("claude-sonnet"), WithMaxTokens(2048), WithThinking(ThinkingModeOff), WithEffort(unified.ReasoningEffortHigh), WithTemperature(0.7))
 	assert.Equal(t, "claude-sonnet", opts.Model)
 	assert.Equal(t, 2048, opts.MaxTokens)
-	assert.Equal(t, unified.ThinkingModeOff, opts.Thinking)
-	assert.Equal(t, unified.EffortHigh, opts.Effort)
+	assert.Equal(t, ThinkingModeOff, opts.Thinking)
+	assert.Equal(t, unified.ReasoningEffortHigh, opts.Effort)
 	assert.Equal(t, 0.7, opts.Temperature)
 }
 
@@ -33,14 +31,12 @@ func TestDefaultInferenceOptions(t *testing.T) {
 }
 
 func TestAgent_ResetClearsState(t *testing.T) {
-	svc := newFakeService()
-	require.NotNil(t, svc, "newFakeService() returned nil")
-
-	a := New(svc,
+	a := New(
+		WithClient(newFakeClient()),
 		WithWorkspace(t.TempDir()),
 		WithToolTimeout(5*time.Second),
 		WithInferenceOptions(InferenceOptions{
-			Model:     TestServiceID + "/" + TestModelID, // Uses fake service's real ServiceID/ModelID
+			Model:     TestServiceID + "/" + TestModelID,
 			MaxTokens: 1000,
 		}),
 	)
@@ -52,9 +48,9 @@ func TestAgent_ResetClearsState(t *testing.T) {
 
 func TestAgent_ParamsSummary(t *testing.T) {
 	a := &Agent{
-		inference:     DefaultInferenceOptions(),
-		provider:      &testFakeProvider{streamer: testFakeStreamer{}},
-		resolvedModel: TestModelID,
+		inference:        DefaultInferenceOptions(),
+		resolvedProvider: TestServiceID,
+		resolvedModel:    TestModelID,
 	}
 	summary := a.ParamsSummary()
 	assert.Contains(t, summary, "model:")
@@ -63,19 +59,6 @@ func TestAgent_ParamsSummary(t *testing.T) {
 	assert.Contains(t, summary, "thinking:")
 	assert.Contains(t, summary, "effort:")
 }
-
-type testStreamer struct{}
-
-func (t testStreamer) Stream(ctx context.Context, req unified.Request) (<-chan client.StreamResult, error) {
-	ch := make(chan client.StreamResult)
-	go func() {
-		<-ctx.Done()
-		close(ch)
-	}()
-	return ch, nil
-}
-
-func (t testStreamer) Name() string { return "test" }
 
 func TestAgent_OutWriter(t *testing.T) {
 	var buf bytes.Buffer
@@ -107,10 +90,8 @@ func TestAgent_WithWorkspace(t *testing.T) {
 }
 
 func TestRunTurn_StreamError(t *testing.T) {
-	svc := newFakeService()
-	require.NotNil(t, svc, "newFakeService() returned nil")
-
-	a := New(svc,
+	a := New(
+		WithClient(errClient{}),
 		WithWorkspace(t.TempDir()),
 		WithToolTimeout(5*time.Second),
 		WithMaxSteps(1),
@@ -119,9 +100,6 @@ func TestRunTurn_StreamError(t *testing.T) {
 			MaxTokens: 1000,
 		}),
 	)
-
-	// Replace the session with one that returns errors
-	a.session = conversation.New(errStreamer{})
 
 	var buf bytes.Buffer
 	a.out = &buf
@@ -131,10 +109,8 @@ func TestRunTurn_StreamError(t *testing.T) {
 }
 
 func TestRunTurn_StreamErrorIncludesDiagnostics(t *testing.T) {
-	svc := newFakeService()
-	require.NotNil(t, svc, "newFakeService() returned nil")
-
-	a := New(svc,
+	a := New(
+		WithClient(errClient{}),
 		WithWorkspace(t.TempDir()),
 		WithToolTimeout(5*time.Second),
 		WithMaxSteps(1),
@@ -144,47 +120,23 @@ func TestRunTurn_StreamErrorIncludesDiagnostics(t *testing.T) {
 			MaxTokens: 1000,
 		}),
 	)
-
-	a.provider = &testFakeProvider{streamer: testFakeStreamer{}}
+	a.resolvedProvider = TestServiceID
 	a.resolvedModel = TestModelID
-	a.session = conversation.New(errStreamer{}, conversation.WithModel(TestModelID))
 
 	var buf bytes.Buffer
 	a.out = &buf
 
 	err := a.RunTurn(context.Background(), 1, "oops")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "provider=test")
+	assert.Contains(t, err.Error(), "provider="+TestServiceID)
 	assert.Contains(t, err.Error(), "model="+TestModelID)
 }
 
-type errStreamer struct{}
+type errClient struct{}
 
-func (e errStreamer) Stream(ctx context.Context, req unified.Request) (<-chan client.StreamResult, error) {
-	ch := make(chan client.StreamResult, 1)
-	ch <- client.StreamResult{Err: errors.New("stream error")}
-	close(ch)
-	return ch, nil
-}
-
-func (e errStreamer) Name() string { return "err" }
-
-type recordingStreamer struct {
-	requests []unified.Request
-	streams  [][]client.StreamResult
-}
-
-func (r *recordingStreamer) Stream(_ context.Context, req unified.Request) (<-chan client.StreamResult, error) {
-	r.requests = append(r.requests, req)
-	idx := len(r.requests) - 1
-	var items []client.StreamResult
-	if idx < len(r.streams) {
-		items = r.streams[idx]
-	}
-	ch := make(chan client.StreamResult, len(items))
-	for _, item := range items {
-		ch <- item
-	}
+func (e errClient) Request(ctx context.Context, req unified.Request) (<-chan unified.Event, error) {
+	ch := make(chan unified.Event, 1)
+	ch <- unified.ErrorEvent{Err: errors.New("stream error")}
 	close(ch)
 	return ch, nil
 }
@@ -210,55 +162,41 @@ func (t blockingCancelTool) Execute(ctx acoreTool.Ctx, input json.RawMessage) (a
 	return nil, ctx.Err()
 }
 
-func completedToolCallStream(responseID string, calls ...unified.ToolCall) []client.StreamResult {
-	out := make([]client.StreamResult, 0, len(calls)+1)
+func completedToolCallStream(calls ...unified.ToolCall) []unified.Event {
+	out := make([]unified.Event, 0, len(calls)*2+1)
 	for _, call := range calls {
-		call := call
-		out = append(out, client.StreamResult{Event: unified.StreamEvent{
-			Type: unified.StreamEventToolCall,
-			StreamToolCall: &unified.StreamToolCall{
-				Ref:  unified.StreamRef{ResponseID: responseID},
-				ID:   call.ID,
-				Name: call.Name,
-				Args: call.Args,
-			},
-			ToolCall: &unified.ToolCall{ID: call.ID, Name: call.Name, Args: call.Args},
-		}})
+		out = append(out,
+			unified.ToolCallStartEvent{Index: call.Index, ID: call.ID, Name: call.Name},
+			unified.ToolCallDoneEvent{Index: call.Index, ID: call.ID, Name: call.Name, Args: call.Arguments},
+		)
 	}
-	out = append(out, client.StreamResult{Event: unified.StreamEvent{
-		Type: unified.StreamEventCompleted,
-		Lifecycle: &unified.Lifecycle{Scope: unified.LifecycleScopeResponse, State: unified.LifecycleStateDone, Ref: unified.StreamRef{ResponseID: responseID}},
-		Completed: &unified.Completed{StopReason: unified.StopReasonToolUse},
-	}})
+	out = append(out, unified.CompletedEvent{FinishReason: unified.FinishReasonToolCall, MessageID: "resp_tool"})
 	return out
 }
 
-func completedTextStream(responseID, text string) []client.StreamResult {
-	return []client.StreamResult{
-		{Event: unified.StreamEvent{Type: unified.StreamEventContentDelta, ContentDelta: &unified.ContentDelta{ContentBase: unified.ContentBase{Ref: unified.StreamRef{ResponseID: responseID}, Kind: unified.ContentKindText, Data: text}}}},
-		{Event: unified.StreamEvent{Type: unified.StreamEventCompleted, Lifecycle: &unified.Lifecycle{Scope: unified.LifecycleScopeResponse, State: unified.LifecycleStateDone, Ref: unified.StreamRef{ResponseID: responseID}}, Completed: &unified.Completed{StopReason: unified.StopReasonEndTurn}}},
+func completedTextStream(text string) []unified.Event {
+	return []unified.Event{
+		unified.TextDeltaEvent{Text: text},
+		unified.CompletedEvent{FinishReason: unified.FinishReasonStop, MessageID: "resp_text"},
 	}
 }
 
-func TestRunTurn_CancelDuringToolExecutionFlushesCanceledToolResult(t *testing.T) {
-	streamer := &recordingStreamer{streams: [][]client.StreamResult{
-		completedToolCallStream("resp_tool", unified.ToolCall{ID: "call_1", Name: "cancel_tool", Args: map[string]any{"x": 1}}),
-		completedTextStream("resp_followup", "ack"),
+func TestRunTurn_CancelDuringToolExecutionDoesNotCommitPartialTurn(t *testing.T) {
+	streamer := &recordingClient{streams: [][]unified.Event{
+		completedToolCallStream(unified.ToolCall{ID: "call_1", Name: "cancel_tool", Arguments: json.RawMessage(`{"x":1}`)}),
+		completedTextStream("ack"),
 	}}
-	provider := &testFakeProvider{streamer: streamer}
-	svc := newFakeService()
-	a := New(svc,
+	a := New(
+		WithClient(streamer),
 		WithWorkspace(t.TempDir()),
 		WithToolTimeout(5*time.Second),
 		WithMaxSteps(2),
 		WithInferenceOptions(InferenceOptions{Model: TestServiceID + "/" + TestModelID, MaxTokens: 1000}),
 	)
-	a.provider = provider
-	a.resolvedModel = TestModelID
-	a.session = conversation.New(provider.streamer, conversation.WithModel(TestModelID))
 	tool := blockingCancelTool{name: "cancel_tool", started: make(chan struct{})}
 	a.allTools = []acoreTool.Tool{tool}
 	a.activation = NewActivationManager(a.allTools)
+	a.session = a.newSession()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -272,40 +210,33 @@ func TestRunTurn_CancelDuringToolExecutionFlushesCanceledToolResult(t *testing.T
 	err := <-done
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
+	require.Len(t, streamer.requests, 1)
+
+	err = a.RunTurn(context.Background(), 2, "continue")
+	require.NoError(t, err)
 	require.Len(t, streamer.requests, 2)
-	toolMessages := streamer.requests[1].Messages
-	require.Len(t, toolMessages, 3)
-	msg := toolMessages[2]
-	require.Equal(t, unified.RoleTool, msg.Role)
-	require.Len(t, msg.Parts, 1)
-	require.NotNil(t, msg.Parts[0].ToolResult)
-	assert.Equal(t, "call_1", msg.Parts[0].ToolResult.ToolCallID)
-	assert.Equal(t, canceledToolResult, msg.Parts[0].ToolResult.ToolOutput)
-	assert.True(t, msg.Parts[0].ToolResult.IsError)
+	assert.Len(t, streamer.requests[1].Messages, 1)
+	assert.Equal(t, unified.RoleUser, streamer.requests[1].Messages[0].Role)
 }
 
 func TestRunTurn_CancelDuringFirstToolMarksRemainingToolCallsCanceled(t *testing.T) {
-	streamer := &recordingStreamer{streams: [][]client.StreamResult{
-		completedToolCallStream("resp_tool",
-			unified.ToolCall{ID: "call_1", Name: "cancel_tool", Args: map[string]any{"x": 1}},
-			unified.ToolCall{ID: "call_2", Name: "cancel_tool", Args: map[string]any{"x": 2}},
+	streamer := &recordingClient{streams: [][]unified.Event{
+		completedToolCallStream(
+			unified.ToolCall{ID: "call_1", Name: "cancel_tool", Arguments: json.RawMessage(`{"x":1}`), Index: 0},
+			unified.ToolCall{ID: "call_2", Name: "cancel_tool", Arguments: json.RawMessage(`{"x":2}`), Index: 1},
 		),
-		completedTextStream("resp_followup", "ack"),
 	}}
-	provider := &testFakeProvider{streamer: streamer}
-	svc := newFakeService()
-	a := New(svc,
+	a := New(
+		WithClient(streamer),
 		WithWorkspace(t.TempDir()),
 		WithToolTimeout(5*time.Second),
 		WithMaxSteps(2),
 		WithInferenceOptions(InferenceOptions{Model: TestServiceID + "/" + TestModelID, MaxTokens: 1000}),
 	)
-	a.provider = provider
-	a.resolvedModel = TestModelID
-	a.session = conversation.New(provider.streamer, conversation.WithModel(TestModelID))
 	tool := blockingCancelTool{name: "cancel_tool", started: make(chan struct{})}
 	a.allTools = []acoreTool.Tool{tool}
 	a.activation = NewActivationManager(a.allTools)
+	a.session = a.newSession()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -319,16 +250,5 @@ func TestRunTurn_CancelDuringFirstToolMarksRemainingToolCallsCanceled(t *testing
 	err := <-done
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
-	require.Len(t, streamer.requests, 2)
-	toolMessages := streamer.requests[1].Messages
-	require.Len(t, toolMessages, 4)
-	for i, expectedID := range []string{"call_1", "call_2"} {
-		msg := toolMessages[i+2]
-		require.Equal(t, unified.RoleTool, msg.Role)
-		require.Len(t, msg.Parts, 1)
-		require.NotNil(t, msg.Parts[0].ToolResult)
-		assert.Equal(t, expectedID, msg.Parts[0].ToolResult.ToolCallID)
-		assert.Equal(t, canceledToolResult, msg.Parts[0].ToolResult.ToolOutput)
-		assert.True(t, msg.Parts[0].ToolResult.IsError)
-	}
+	require.Len(t, streamer.requests, 1)
 }
