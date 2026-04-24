@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/codewandler/agentsdk/conversation"
+	"github.com/codewandler/agentsdk/conversation/jsonlstore"
 	"github.com/codewandler/agentsdk/runner"
 	agentruntime "github.com/codewandler/agentsdk/runtime"
 	acoreTool "github.com/codewandler/agentsdk/tool"
@@ -44,6 +45,10 @@ type Agent struct {
 	toolTimeout      time.Duration
 	systemOverride   string
 	sessionID        string
+	session          *conversation.Session
+	sessionStoreDir  string
+	resumeSession    string
+	sessionStorePath string
 	verbose          bool
 }
 
@@ -112,6 +117,9 @@ func (a *Agent) initRuntime() error {
 		a.autoResult = result
 	}
 	a.resolveRouteIdentity()
+	if err := a.initSession(context.Background()); err != nil {
+		return err
+	}
 	runtimeAgent, err := agentruntime.New(a.client, a.runtimeOptions()...)
 	if err != nil {
 		return err
@@ -138,6 +146,63 @@ func (a *Agent) runtimeOptions() []agentruntime.Option {
 	}
 	if reasoning, ok := a.reasoningConfig(); ok {
 		opts = append(opts, agentruntime.WithReasoning(reasoning))
+	}
+	if a.session != nil {
+		opts = append(opts, agentruntime.WithSession(a.session))
+	}
+	return opts
+}
+
+func (a *Agent) initSession(ctx context.Context) error {
+	if a.resumeSession == "" && a.sessionStoreDir == "" {
+		return nil
+	}
+	opts := a.conversationOptions(false)
+	if a.resumeSession != "" {
+		store := jsonlstore.Open(a.resumeSession)
+		session, err := conversation.Resume(ctx, store, "", opts...)
+		if err != nil {
+			return fmt.Errorf("resume session %s: %w", a.resumeSession, err)
+		}
+		a.session = session
+		a.sessionID = string(session.SessionID())
+		a.sessionStorePath = a.resumeSession
+		return nil
+	}
+	return a.startPersistentSession(time.Now())
+}
+
+func (a *Agent) startPersistentSession(now time.Time) error {
+	if a.sessionStoreDir == "" {
+		a.session = nil
+		a.sessionStorePath = ""
+		return nil
+	}
+	path := filepath.Join(a.sessionStoreDir, fmt.Sprintf("%s-%s.jsonl", now.UTC().Format("20060102T150405Z"), a.sessionID))
+	store := jsonlstore.Open(path)
+	opts := append(a.conversationOptions(true),
+		conversation.WithStore(store),
+		conversation.WithConversationID(conversation.ConversationID("conv_"+a.sessionID)),
+	)
+	a.session = conversation.New(opts...)
+	a.sessionStorePath = path
+	return nil
+}
+
+func (a *Agent) conversationOptions(includeSessionID bool) []conversation.Option {
+	opts := []conversation.Option{
+		conversation.WithModel(a.inference.Model),
+		conversation.WithMaxOutputTokens(a.inference.MaxTokens),
+		conversation.WithTemperature(a.inference.Temperature),
+		conversation.WithSystem(BuildSystemPrompt(a.workspace, a.systemOverride)),
+		conversation.WithTools(acoreTool.UnifiedToolsFrom(a.activation.ActiveTools())),
+		conversation.WithToolChoice(unified.ToolChoice{Mode: unified.ToolChoiceAuto}),
+	}
+	if includeSessionID {
+		opts = append([]conversation.Option{conversation.WithSessionID(conversation.SessionID(a.sessionID))}, opts...)
+	}
+	if reasoning, ok := a.reasoningConfig(); ok {
+		opts = append(opts, conversation.WithReasoning(reasoning))
 	}
 	return opts
 }
@@ -171,6 +236,9 @@ func (a *Agent) setupTools(workspace string, toolTimeout time.Duration) {
 // SessionID returns the current session identifier.
 func (a *Agent) SessionID() string { return a.sessionID }
 
+// SessionStorePath returns the JSONL file used for durable session replay.
+func (a *Agent) SessionStorePath() string { return a.sessionStorePath }
+
 // Tracker returns the usage tracker for session-level reporting.
 func (a *Agent) Tracker() *coreusage.Tracker { return a.tracker }
 
@@ -190,6 +258,14 @@ func (a *Agent) Reset() {
 	a.tracker.Reset()
 	a.sessionID, _ = nanoid.Generate("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", 8)
 	if a.runtime != nil {
+		if a.sessionStoreDir != "" {
+			if err := a.startPersistentSession(time.Now()); err == nil {
+				if runtimeAgent, err := agentruntime.New(a.client, a.runtimeOptions()...); err == nil {
+					a.runtime = runtimeAgent
+					return
+				}
+			}
+		}
 		a.runtime.ResetSession(conversation.WithSessionID(conversation.SessionID(a.sessionID)))
 	}
 }

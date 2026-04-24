@@ -56,8 +56,8 @@ github.com/clipperhouse/displaywidth v0.11.0 h1:lBc6kY44VFw+TDx4I8opi/EtL9m20WSE
 github.com/clipperhouse/displaywidth v0.11.0/go.mod h1:bkrFNkf81G8HyVqmKGxsPufD3JhNl3dSqnGhOoSD/o0=
 github.com/clipperhouse/uax29/v2 v2.7.0 h1:+gs4oBZ2gPfVrKPthwbMzWZDaAFPGYK72F0NJv2v7Vk=
 github.com/clipperhouse/uax29/v2 v2.7.0/go.mod h1:EFJ2TJMRUaplDxHKj1qAEhCtQPW2tJSwu5BF98AuoVM=
-github.com/codewandler/agentsdk v0.10.1 h1:HXT3S09dsHP78QC+uo5rYr7vt390LtKy1dVz9vQet2Y=
-github.com/codewandler/agentsdk v0.10.1/go.mod h1:ks329uy5SjwpUtGU2VDN0lrVB6wNhetN9eKOPAtR8pc=
+github.com/codewandler/agentsdk v0.11.2 h1:aChGscZwUjlH3jTrwW/9uoXQ3gZhIx1Z3r0QlkRJDt4=
+github.com/codewandler/agentsdk v0.11.2/go.mod h1:ks329uy5SjwpUtGU2VDN0lrVB6wNhetN9eKOPAtR8pc=
 github.com/codewandler/llmadapter v0.48.4 h1:KvHNYuabdzsS5l9WFVIfrEoQ5FRCZygOE6HtuCfipUU=
 github.com/codewandler/llmadapter v0.48.4/go.mod h1:STVOTlhhtZt+kaoE5VOblExlxPN1YEOSOu5ts/U9X+U=
 github.com/codewandler/modeldb v0.13.0 h1:BHxyoCESsKDBDBEN9xmzokiWyHqzkVeiGWJB5mDHaNM=

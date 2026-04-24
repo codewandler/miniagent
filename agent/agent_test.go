@@ -121,6 +121,38 @@ func TestAgent_SessionID(t *testing.T) {
 	assert.Equal(t, "abc123", a.SessionID())
 }
 
+func TestAgent_PersistsAndResumesSession(t *testing.T) {
+	dir := t.TempDir()
+	firstClient := &recordingClient{streams: [][]unified.Event{completedTextStream("first response")}}
+	first := New(
+		WithClient(firstClient),
+		WithWorkspace(t.TempDir()),
+		WithSessionStoreDir(dir),
+		WithInferenceOptions(InferenceOptions{Model: TestServiceID + "/" + TestModelID, MaxTokens: 1000}),
+	)
+
+	require.NoError(t, first.RunTurn(context.Background(), 1, "first task"))
+	storePath := first.SessionStorePath()
+	require.NotEmpty(t, storePath)
+
+	secondClient := &recordingClient{streams: [][]unified.Event{completedTextStream("second response")}}
+	second := New(
+		WithClient(secondClient),
+		WithWorkspace(t.TempDir()),
+		WithSessionStoreDir(dir),
+		WithResumeSession(storePath),
+		WithInferenceOptions(InferenceOptions{Model: TestServiceID + "/" + TestModelID, MaxTokens: 1000}),
+	)
+
+	require.Equal(t, first.SessionID(), second.SessionID())
+	require.NoError(t, second.RunTurn(context.Background(), 1, "second task"))
+	require.Len(t, secondClient.requests, 1)
+	require.Len(t, secondClient.requests[0].Messages, 3)
+	requireMessageText(t, secondClient.requests[0].Messages[0], "first task")
+	requireMessageText(t, secondClient.requests[0].Messages[1], "first response")
+	requireMessageText(t, secondClient.requests[0].Messages[2], "second task")
+}
+
 func TestAgent_WithMaxSteps(t *testing.T) {
 	a := &Agent{}
 	WithMaxSteps(50)(a)
@@ -229,6 +261,14 @@ func completedTextStream(text string) []unified.Event {
 		unified.TextDeltaEvent{Text: text},
 		unified.CompletedEvent{FinishReason: unified.FinishReasonStop, MessageID: "resp_text"},
 	}
+}
+
+func requireMessageText(t *testing.T, msg unified.Message, want string) {
+	t.Helper()
+	require.Len(t, msg.Content, 1)
+	text, ok := msg.Content[0].(unified.TextPart)
+	require.True(t, ok)
+	require.Equal(t, want, text.Text)
 }
 
 func TestRunTurn_CancelDuringToolExecutionDoesNotCommitPartialTurn(t *testing.T) {

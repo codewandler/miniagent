@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.0 — 2026-04-25
+
+### Added
+- Persist CLI sessions as JSONL files under `~/.miniagent/sessions`
+- Added `--session` to resume a previous session by id or JSONL path
+- Added `--continue` to resume the most recently active session
+- Added `--sessions-dir` to override the session storage directory
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.11.2`
+
 ## v0.3.5 — 2026-04-25
 
 ### Changed

@@ -35,6 +35,9 @@ func rootCmd() *cobra.Command {
 		toolTimeout  time.Duration
 		thinkingFlag string
 		effortFlag   string
+		session      string
+		continueLast bool
+		sessionsDir  string
 		verbose      bool
 	)
 	cmd := &cobra.Command{
@@ -53,7 +56,7 @@ With a positional argument it runs the task once and exits.`,
 			if effortFlag != "" {
 				inference.Effort = unified.ReasoningEffort(effortFlag)
 			}
-			return execute(args, inference, maxSteps, workspace, systemPrompt, totalTimeout, toolTimeout, verbose)
+			return execute(args, inference, maxSteps, workspace, systemPrompt, totalTimeout, toolTimeout, session, continueLast, sessionsDir, verbose)
 		},
 	}
 	f := cmd.Flags()
@@ -67,6 +70,9 @@ With a positional argument it runs the task once and exits.`,
 	f.Float64Var(&inference.Temperature, "temperature", inference.Temperature, "Sampling temperature 0.0–2.0")
 	f.StringVar(&thinkingFlag, "thinking", string(inference.Thinking), "Thinking mode: auto|on|off")
 	f.StringVar(&effortFlag, "effort", string(inference.Effort), "Effort level: low|medium|high")
+	f.StringVar(&session, "session", "", "Resume a session by id or JSONL path")
+	f.BoolVar(&continueLast, "continue", false, "Resume the most recently active session")
+	f.StringVar(&sessionsDir, "sessions-dir", "", "Session storage directory (default: ~/.miniagent/sessions)")
 	f.BoolVarP(&verbose, "verbose", "v", false, "Show resolved provider/model diagnostics")
 	_ = cmd.RegisterFlagCompletionFunc("model", completeModelFlag)
 
@@ -180,7 +186,7 @@ func containsFold(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-func execute(args []string, inference InferenceConfig, maxSteps int, workspace, systemPrompt string, totalTimeout, toolTimeout time.Duration, verbose bool) error {
+func execute(args []string, inference InferenceConfig, maxSteps int, workspace, systemPrompt string, totalTimeout, toolTimeout time.Duration, session string, continueLast bool, sessionsDir string, verbose bool) error {
 	if workspace == "" {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -188,15 +194,28 @@ func execute(args []string, inference InferenceConfig, maxSteps int, workspace, 
 		}
 		workspace = wd
 	}
+	resolvedSessionsDir, err := defaultSessionDir(sessionsDir)
+	if err != nil {
+		return err
+	}
+	resumePath, err := resolveSessionPath(resolvedSessionsDir, session, continueLast)
+	if err != nil {
+		return err
+	}
 	ctx := context.Background()
-	a, err := agent.NewE(
+	opts := []agent.Option{
 		agent.WithWorkspace(workspace),
 		agent.WithToolTimeout(toolTimeout),
 		agent.WithSystemOverride(systemPrompt),
 		agent.WithInferenceOptions(inference),
 		agent.WithMaxSteps(maxSteps),
+		agent.WithSessionStoreDir(resolvedSessionsDir),
 		agent.WithVerbose(verbose),
-	)
+	}
+	if resumePath != "" {
+		opts = append(opts, agent.WithResumeSession(resumePath))
+	}
+	a, err := agent.NewE(opts...)
 	if err != nil {
 		return err
 	}
@@ -216,4 +235,80 @@ func execute(args []string, inference InferenceConfig, maxSteps int, workspace, 
 		return err
 	}
 	return agent.RunREPL(ctx, a, os.Stdin)
+}
+
+func defaultSessionDir(override string) (string, error) {
+	if override != "" {
+		return filepath.Abs(override)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("get home directory: %w", err)
+	}
+	return filepath.Join(home, ".miniagent", "sessions"), nil
+}
+
+func resolveSessionPath(dir, session string, continueLast bool) (string, error) {
+	if session != "" && continueLast {
+		return "", fmt.Errorf("--session and --continue cannot be used together")
+	}
+	if continueLast {
+		return latestSessionPath(dir)
+	}
+	if session == "" {
+		return "", nil
+	}
+	if strings.ContainsAny(session, `/\`) || strings.HasSuffix(session, ".jsonl") {
+		path, err := filepath.Abs(session)
+		if err != nil {
+			return "", err
+		}
+		if _, err := os.Stat(path); err != nil {
+			return "", fmt.Errorf("session %s: %w", path, err)
+		}
+		return path, nil
+	}
+	candidates := []string{
+		filepath.Join(dir, session+".jsonl"),
+		filepath.Join(dir, "*-"+session+".jsonl"),
+	}
+	var matches []string
+	for _, pattern := range candidates {
+		found, err := filepath.Glob(pattern)
+		if err != nil {
+			return "", err
+		}
+		matches = append(matches, found...)
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("session %q not found in %s", session, dir)
+	}
+	return newestPath(matches)
+}
+
+func latestSessionPath(dir string) (string, error) {
+	matches, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	if err != nil {
+		return "", err
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no sessions found in %s", dir)
+	}
+	return newestPath(matches)
+}
+
+func newestPath(paths []string) (string, error) {
+	var newest string
+	var newestMod time.Time
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			return "", err
+		}
+		if newest == "" || info.ModTime().After(newestMod) {
+			newest = path
+			newestMod = info.ModTime()
+		}
+	}
+	return newest, nil
 }

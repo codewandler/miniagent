@@ -89,6 +89,12 @@ func WithToolTimeout(d time.Duration) Option { return func(a *Agent) { a.toolTim
 // WithSystemOverride sets a custom system prompt body (default: built from workspace).
 func WithSystemOverride(prompt string) Option { return func(a *Agent) { a.systemOverride = prompt } }
 
+// WithSessionStoreDir enables durable JSONL session persistence in dir.
+func WithSessionStoreDir(dir string) Option { return func(a *Agent) { a.sessionStoreDir = dir } }
+
+// WithResumeSession resumes a durable JSONL session from path.
+func WithResumeSession(path string) Option { return func(a *Agent) { a.resumeSession = path } }
+
 // WithVerbose enables verbose runtime diagnostics.
 func WithVerbose(verbose bool) Option { return func(a *Agent) { a.verbose = verbose } }
 
