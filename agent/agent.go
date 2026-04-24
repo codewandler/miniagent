@@ -11,6 +11,7 @@ import (
 
 	"github.com/codewandler/agentsdk/conversation"
 	"github.com/codewandler/agentsdk/runner"
+	agentruntime "github.com/codewandler/agentsdk/runtime"
 	acoreTool "github.com/codewandler/agentsdk/tool"
 	"github.com/codewandler/agentsdk/tools/standard"
 	"github.com/codewandler/agentsdk/tools/web"
@@ -31,7 +32,7 @@ type Agent struct {
 	resolvedProvider string
 	resolvedModel    string
 	sourceAPI        adapt.ApiKind
-	session          *conversation.Session
+	runtime          *agentruntime.Agent
 	tracker          *coreusage.Tracker
 	allTools         []acoreTool.Tool
 	activation       *ActivationManager
@@ -104,24 +105,31 @@ func (a *Agent) initRuntime() error {
 		a.autoResult = result
 	}
 	a.resolveRouteIdentity()
-	a.session = a.newSession()
+	runtimeAgent, err := agentruntime.New(a.client, a.runtimeOptions()...)
+	if err != nil {
+		return err
+	}
+	a.runtime = runtimeAgent
 	return nil
 }
 
-func (a *Agent) newSession() *conversation.Session {
-	opts := []conversation.Option{
-		conversation.WithSessionID(conversation.SessionID(a.sessionID)),
-		conversation.WithModel(a.inference.Model),
-		conversation.WithMaxOutputTokens(a.inference.MaxTokens),
-		conversation.WithTemperature(a.inference.Temperature),
-		conversation.WithSystem(BuildSystemPrompt(a.workspace, a.systemOverride)),
-		conversation.WithTools(acoreTool.UnifiedToolsFrom(a.activation.ActiveTools())),
-		conversation.WithToolChoice(unified.ToolChoice{Mode: unified.ToolChoiceAuto}),
+func (a *Agent) runtimeOptions() []agentruntime.Option {
+	opts := []agentruntime.Option{
+		agentruntime.WithSessionOptions(conversation.WithSessionID(conversation.SessionID(a.sessionID))),
+		agentruntime.WithModel(a.inference.Model),
+		agentruntime.WithMaxOutputTokens(a.inference.MaxTokens),
+		agentruntime.WithTemperature(a.inference.Temperature),
+		agentruntime.WithSystem(BuildSystemPrompt(a.workspace, a.systemOverride)),
+		agentruntime.WithTools(a.activation.ActiveTools()),
+		agentruntime.WithToolChoice(unified.ToolChoice{Mode: unified.ToolChoiceAuto}),
+		agentruntime.WithMaxSteps(a.maxSteps),
+		agentruntime.WithToolTimeout(a.toolTimeout),
+		agentruntime.WithProviderIdentity(a.providerIdentity),
 	}
 	if reasoning, ok := a.reasoningConfig(); ok {
-		opts = append(opts, conversation.WithReasoning(reasoning))
+		opts = append(opts, agentruntime.WithReasoning(reasoning))
 	}
-	return conversation.New(opts...)
+	return opts
 }
 
 func (a *Agent) resolveRouteIdentity() {
@@ -182,7 +190,9 @@ func (a *Agent) ParamsSummary() string {
 func (a *Agent) Reset() {
 	a.tracker.Reset()
 	a.sessionID, _ = nanoid.Generate("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", 8)
-	a.session = a.newSession()
+	if a.runtime != nil {
+		a.runtime.ResetSession(conversation.WithSessionID(conversation.SessionID(a.sessionID)))
+	}
 }
 
 // ErrMaxStepsReached is returned by RunTurn when the step loop is exhausted.
@@ -190,35 +200,19 @@ var ErrMaxStepsReached = errors.New("maximum steps reached - task may be incompl
 
 // RunTurn executes one REPL turn (or one-shot task).
 func (a *Agent) RunTurn(ctx context.Context, turnID int, task string) error {
-	reqBuilder := conversation.NewRequest().
-		Model(a.inference.Model).
-		MaxOutputTokens(a.inference.MaxTokens).
-		Temperature(a.inference.Temperature).
-		Tools(acoreTool.UnifiedToolsFrom(a.activation.ActiveTools())).
-		ToolChoice(unified.ToolChoice{Mode: unified.ToolChoiceAuto}).
-		User(task).
-		Stream(true)
-	if reasoning, ok := a.reasoningConfig(); ok {
-		reqBuilder.Reasoning(reasoning)
-	}
-	req := reqBuilder.Build()
-
 	if a.verbose {
 		display.PrintResolvedModel(a.out, fmt.Sprintf("input=%s  instance=%s  resolved=%s", a.inference.Model, a.resolvedProvider, a.resolvedModel))
 	}
 
 	handler := a.newRunnerEventHandler(turnID)
-	_, err := runner.RunTurn(
+	_, err := a.runtime.RunTurn(
 		ctx,
-		a.session,
-		a.client,
-		req,
-		runner.WithMaxSteps(a.maxSteps),
-		runner.WithTools(a.activation.ActiveTools()),
-		runner.WithToolCtx(a.newToolCtx(ctx)),
-		runner.WithToolTimeout(a.toolTimeout),
-		runner.WithProviderIdentity(a.providerIdentity),
-		runner.WithEventHandler(handler.handle),
+		task,
+		agentruntime.WithTurnMaxSteps(a.maxSteps),
+		agentruntime.WithTurnTools(a.activation.ActiveTools()),
+		agentruntime.WithTurnToolCtx(a.newToolCtx(ctx)),
+		agentruntime.WithTurnProviderIdentity(a.providerIdentity),
+		agentruntime.WithTurnEventHandler(handler.handle),
 	)
 	if handler.stepsCompleted > 1 {
 		display.PrintTurnUsage(a.out, turnID, a.aggregateTurn(turnID))

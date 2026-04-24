@@ -196,7 +196,6 @@ func TestRunTurn_CancelDuringToolExecutionDoesNotCommitPartialTurn(t *testing.T)
 	tool := blockingCancelTool{name: "cancel_tool", started: make(chan struct{})}
 	a.allTools = []acoreTool.Tool{tool}
 	a.activation = NewActivationManager(a.allTools)
-	a.session = a.newSession()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -236,7 +235,6 @@ func TestRunTurn_CancelDuringFirstToolMarksRemainingToolCallsCanceled(t *testing
 	tool := blockingCancelTool{name: "cancel_tool", started: make(chan struct{})}
 	a.allTools = []acoreTool.Tool{tool}
 	a.activation = NewActivationManager(a.allTools)
-	a.session = a.newSession()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
