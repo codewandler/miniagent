@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.3 — 2026-04-24
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.9.0`
+- Runtime tool context construction now uses the agentsdk runtime tool-context factory
+- Explicit `--model` values now use llmadapter dynamic passthrough instead of replacing the default intent route
+
+### Added
+- Added model-selection documentation covering intent routes, dynamic passthrough, provider priority, and credentials
+- Added a focused test proving miniagent requests both intent and dynamic model routes from llmadapter auto mux
+
 ## v0.3.2 — 2026-04-24
 
 ### Changed

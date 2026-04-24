@@ -45,6 +45,39 @@ miniagent
 miniagent --workspace /path/to/project "write tests for main.go"
 ```
 
+## Models
+
+miniagent builds its model client with `llmadapter` auto-detection. It looks for
+environment keys and local OAuth credentials for OpenAI, Codex, Anthropic,
+Claude, OpenRouter, and other registered providers, then creates a mux client.
+
+The default model flag value is an intent route. llmadapter resolves it to the
+best detected provider/model for this machine:
+
+```sh
+miniagent "say pong"
+```
+
+You can also pass an explicit provider-native model ID. The default intent route
+stays configured, and the requested model goes through llmadapter's dynamic
+passthrough route:
+
+```sh
+miniagent -m gpt-5.4 "say pong"
+miniagent -m claude-sonnet-4-6 "say pong"
+```
+
+Provider priority and exact native-model support come from `llmadapter`'s auto
+mux selection. Useful credentials include:
+
+```sh
+export OPENAI_API_KEY=...
+export ANTHROPIC_API_KEY=...
+export OPENROUTER_API_KEY=...
+```
+
+Local Claude/Codex OAuth credentials are also detected when available.
+
 ## Self-improvement
 
 miniagent can improve itself over time. Run the evolution loop and it will

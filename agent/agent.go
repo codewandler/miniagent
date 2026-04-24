@@ -27,6 +27,7 @@ import (
 // turns; conversation history and usage records accumulate across turns.
 type Agent struct {
 	client           unified.Client
+	autoMux          func(adapterconfig.AutoOptions) (adapterconfig.AutoResult, error)
 	autoResult       adapterconfig.AutoResult
 	providerIdentity conversation.ProviderIdentity
 	resolvedProvider string
@@ -88,7 +89,11 @@ func NewE(opts ...Option) (*Agent, error) {
 
 func (a *Agent) initRuntime() error {
 	if a.client == nil {
-		result, err := adapterconfig.AutoMuxClient(adapterconfig.AutoOptions{
+		autoMux := a.autoMux
+		if autoMux == nil {
+			autoMux = adapterconfig.AutoMuxClient
+		}
+		result, err := autoMux(adapterconfig.AutoOptions{
 			EnableEnv:         true,
 			EnableLocalClaude: true,
 			EnableLocalCodex:  true,
@@ -96,7 +101,7 @@ func (a *Agent) initRuntime() error {
 			DynamicModels:     true,
 			SourceAPI:         a.sourceAPI,
 			Intents: []adapterconfig.AutoIntent{{
-				Name:      a.inference.Model,
+				Name:      DefaultInferenceOptions().Model,
 				SourceAPI: a.sourceAPI,
 			}},
 		})
@@ -127,6 +132,9 @@ func (a *Agent) runtimeOptions() []agentruntime.Option {
 		agentruntime.WithMaxSteps(a.maxSteps),
 		agentruntime.WithToolTimeout(a.toolTimeout),
 		agentruntime.WithProviderIdentity(a.providerIdentity),
+		agentruntime.WithToolContextFactory(func(ctx context.Context) acoreTool.Ctx {
+			return a.newToolCtx(ctx)
+		}),
 	}
 	if reasoning, ok := a.reasoningConfig(); ok {
 		opts = append(opts, agentruntime.WithReasoning(reasoning))
@@ -201,7 +209,6 @@ func (a *Agent) RunTurn(ctx context.Context, turnID int, task string) error {
 		task,
 		agentruntime.WithTurnMaxSteps(a.maxSteps),
 		agentruntime.WithTurnTools(a.activation.ActiveTools()),
-		agentruntime.WithTurnToolCtx(a.newToolCtx(ctx)),
 		agentruntime.WithTurnProviderIdentity(a.providerIdentity),
 		agentruntime.WithTurnEventHandler(handler.handle),
 	)

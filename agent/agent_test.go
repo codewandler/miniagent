@@ -9,6 +9,8 @@ import (
 	"time"
 
 	acoreTool "github.com/codewandler/agentsdk/tool"
+	"github.com/codewandler/llmadapter/adapt"
+	"github.com/codewandler/llmadapter/adapterconfig"
 	"github.com/codewandler/llmadapter/unified"
 	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
@@ -58,6 +60,41 @@ func TestAgent_ParamsSummary(t *testing.T) {
 	assert.Contains(t, summary, "resolved_model:")
 	assert.Contains(t, summary, "thinking:")
 	assert.Contains(t, summary, "effort:")
+}
+
+func TestAgentAutoMuxUsesIntentAndDynamicModels(t *testing.T) {
+	var got adapterconfig.AutoOptions
+	a := New(
+		func(a *Agent) {
+			a.autoMux = func(opts adapterconfig.AutoOptions) (adapterconfig.AutoResult, error) {
+				got = opts
+				return adapterconfig.AutoResult{
+					Client: newFakeClient(),
+					Config: adapterconfig.Config{Routes: []adapterconfig.RouteConfig{{
+						SourceAPI:   opts.SourceAPI,
+						Model:       opts.Intents[0].Name,
+						Provider:    "test",
+						ProviderAPI: adapt.ApiOpenAIResponses,
+						NativeModel: TestModelID,
+					}, {
+						SourceAPI:     opts.SourceAPI,
+						Provider:      "test",
+						ProviderAPI:   adapt.ApiOpenAIResponses,
+						DynamicModels: true,
+					}}},
+					Enabled: []adapterconfig.AutoProvider{{Name: "test", Type: "test"}},
+				}, nil
+			}
+		},
+		WithWorkspace(t.TempDir()),
+		WithInferenceOptions(NewInferenceOptions(WithModel("gpt-4.1-mini"), WithMaxTokens(1000))),
+	)
+	require.NotNil(t, a)
+	require.True(t, got.DynamicModels)
+	require.Equal(t, adapt.ApiOpenAIResponses, got.SourceAPI)
+	require.Len(t, got.Intents, 1)
+	require.Equal(t, DefaultInferenceOptions().Model, got.Intents[0].Name)
+	require.Equal(t, adapt.ApiOpenAIResponses, got.Intents[0].SourceAPI)
 }
 
 func TestAgent_OutWriter(t *testing.T) {
