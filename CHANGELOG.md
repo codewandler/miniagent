@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.3.0 — 2026-04-24
+
+Migrated the runtime from `agentapis`/`llmproviders` to `agentsdk` and `llmadapter`, with provider auto-detection through the llmadapter mux client.
+
+### Added
+- Added `agentsdk/runtime` based turn execution in the agent loop
+- Added runner event handling split into `agent/events.go`
+- Added SDK-backed usage conversion in `agent/usage.go`
+- Added cancellation integration coverage for real follow-up turns
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.7.0` and `github.com/codewandler/llmadapter v0.37.0`
+- Replaced local model/provider setup with `llmadapter/adapterconfig.AutoMuxClient`
+- Replaced miniagent's duplicate usage tracker with `agentsdk/usage`
+- Switched display usage formatting to `llmadapter/unified` token and cost records
+- Simplified tests to inject `llmadapter/unified.Client` directly
+- Preserved explicit prompt caching behavior while moving session/runtime ownership into the SDK
+
+### Removed
+- Removed runtime dependencies on `agentapis` and `llmproviders`
+- Removed the local `agent/usage` package
+- Removed the `miniagent llm` subcommand that came from `llmproviders/cli`
+
 ## v0.2.10 — 2026-04-21
 
 Improved cancellation handling during tool execution so interrupted runs report canceled tool results cleanly and preserve conversation consistency.
