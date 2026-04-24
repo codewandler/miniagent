@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.4 — 2026-04-24
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.10.0`
+- Updated to `github.com/codewandler/llmadapter v0.46.0`
+- Inherited llmadapter's modeldb-aware auto intent routing and Anthropic reasoning support
+- Changed the default thinking mode to `auto`, which does not require provider reasoning unless `--thinking on` is set
+
 ## v0.3.3 — 2026-04-24
 
 ### Changed

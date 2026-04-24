@@ -229,7 +229,7 @@ func (a *Agent) reasoningConfig() (unified.ReasoningConfig, bool) {
 	case ThinkingModeOff:
 		return unified.ReasoningConfig{}, false
 	case ThinkingModeAuto, "":
-		return unified.ReasoningConfig{Effort: a.inference.Effort}, true
+		return unified.ReasoningConfig{}, false
 	default:
 		return unified.ReasoningConfig{Effort: a.inference.Effort, Expose: true}, true
 	}

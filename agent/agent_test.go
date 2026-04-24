@@ -30,6 +30,19 @@ func TestDefaultInferenceOptions(t *testing.T) {
 	opts := DefaultInferenceOptions()
 	assert.NotEmpty(t, opts.Model)
 	assert.Greater(t, opts.MaxTokens, 0)
+	assert.Equal(t, ThinkingModeAuto, opts.Thinking)
+}
+
+func TestAgentReasoningConfigRequiresExplicitThinking(t *testing.T) {
+	a := &Agent{inference: DefaultInferenceOptions()}
+	_, ok := a.reasoningConfig()
+	require.False(t, ok)
+
+	a.inference.Thinking = ThinkingModeOn
+	cfg, ok := a.reasoningConfig()
+	require.True(t, ok)
+	assert.True(t, cfg.Expose)
+	assert.Equal(t, unified.ReasoningEffortMedium, cfg.Effort)
 }
 
 func TestAgent_ResetClearsState(t *testing.T) {

@@ -35,7 +35,7 @@ func DefaultInferenceOptions() InferenceOptions {
 	return InferenceOptions{
 		Model:       "codex/gpt-5.4",
 		MaxTokens:   16_000,
-		Thinking:    ThinkingModeOn,
+		Thinking:    ThinkingModeAuto,
 		Effort:      unified.ReasoningEffortMedium,
 		Temperature: 0.1,
 	}
