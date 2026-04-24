@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.5 — 2026-04-25
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.10.1`
+- Updated to `github.com/codewandler/llmadapter v0.48.4`
+- Inherited latest llmadapter auto-routing, Claude provider identity, and provider capability fixes
+
 ## v0.3.4 — 2026-04-24
 
 ### Changed
