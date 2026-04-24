@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.2 — 2026-04-25
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.11.4`
+- Default outgoing model requests now use `cache_policy=on` through agentsdk
+
 ## v0.4.1 — 2026-04-25
 
 ### Changed

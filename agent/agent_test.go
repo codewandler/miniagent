@@ -132,6 +132,8 @@ func TestAgent_PersistsAndResumesSession(t *testing.T) {
 	)
 
 	require.NoError(t, first.RunTurn(context.Background(), 1, "first task"))
+	require.Len(t, firstClient.requests, 1)
+	require.Equal(t, unified.CachePolicyOn, firstClient.requests[0].CachePolicy)
 	storePath := first.SessionStorePath()
 	require.NotEmpty(t, storePath)
 
@@ -147,6 +149,7 @@ func TestAgent_PersistsAndResumesSession(t *testing.T) {
 	require.Equal(t, first.SessionID(), second.SessionID())
 	require.NoError(t, second.RunTurn(context.Background(), 1, "second task"))
 	require.Len(t, secondClient.requests, 1)
+	require.Equal(t, unified.CachePolicyOn, secondClient.requests[0].CachePolicy)
 	require.Len(t, secondClient.requests[0].Messages, 3)
 	requireMessageText(t, secondClient.requests[0].Messages[0], "first task")
 	requireMessageText(t, secondClient.requests[0].Messages[1], "first response")
