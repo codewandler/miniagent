@@ -91,6 +91,7 @@ func (a *Agent) initRuntime() error {
 		result, err := adapterconfig.AutoMuxClient(adapterconfig.AutoOptions{
 			EnableEnv:         true,
 			EnableLocalClaude: true,
+			EnableLocalCodex:  true,
 			UseModelDB:        true,
 			SourceAPI:         a.sourceAPI,
 			Intents: []adapterconfig.AutoIntent{{
@@ -136,27 +137,16 @@ func (a *Agent) resolveRouteIdentity() {
 	a.providerIdentity = conversation.ProviderIdentity{}
 	a.resolvedProvider = ""
 	a.resolvedModel = ""
-	if len(a.autoResult.Config.Routes) == 0 {
+	summary, ok := a.autoResult.RouteSummary(a.sourceAPI, a.inference.Model)
+	if !ok {
 		return
 	}
-	for _, route := range a.autoResult.Config.Routes {
-		if route.SourceAPI != a.sourceAPI {
-			continue
-		}
-		if route.Model != "" && route.Model != a.inference.Model {
-			continue
-		}
-		a.resolvedProvider = route.Provider
-		a.resolvedModel = route.NativeModel
-		a.providerIdentity = conversation.ProviderIdentity{
-			ProviderName: route.Provider,
-			APIKind:      string(route.ProviderAPI),
-			NativeModel:  route.NativeModel,
-		}
-		if a.resolvedModel == "" {
-			a.resolvedModel = route.Model
-		}
-		return
+	a.resolvedProvider = summary.Provider
+	a.resolvedModel = summary.NativeModel
+	a.providerIdentity = conversation.ProviderIdentity{
+		ProviderName: summary.Provider,
+		APIKind:      string(summary.ProviderAPI),
+		NativeModel:  summary.NativeModel,
 	}
 }
 

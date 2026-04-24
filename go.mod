@@ -4,8 +4,8 @@ go 1.26.1
 
 require (
 	github.com/charmbracelet/glamour v1.0.0
-	github.com/codewandler/agentsdk v0.7.0
-	github.com/codewandler/llmadapter v0.37.0
+	github.com/codewandler/agentsdk v0.8.0
+	github.com/codewandler/llmadapter v0.42.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/spf13/cobra v1.10.2

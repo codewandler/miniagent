@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.1 — 2026-04-24
+
+Follow-up cleanup after the agentsdk/llmadapter runtime migration.
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.8.0` and `github.com/codewandler/llmadapter v0.42.0`
+- Replaced miniagent's local tool context implementation with `agentsdk/runtime.NewToolContext`
+- Replaced manual auto-route summary extraction with `llmadapter/adapterconfig.AutoResult.RouteSummary`
+- Enabled local Codex OAuth auto-detection in the auto mux configuration
+
 ## v0.3.0 — 2026-04-24
 
 Migrated the runtime from `agentapis`/`llmproviders` to `agentsdk` and `llmadapter`, with provider auto-detection through the llmadapter mux client.
