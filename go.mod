@@ -4,8 +4,8 @@ go 1.26.1
 
 require (
 	github.com/charmbracelet/glamour v1.0.0
-	github.com/codewandler/agentsdk v0.11.2
-	github.com/codewandler/llmadapter v0.48.4
+	github.com/codewandler/agentsdk v0.11.3
+	github.com/codewandler/llmadapter v0.48.6
 	github.com/invopop/jsonschema v0.13.0
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/spf13/cobra v1.10.2
@@ -37,7 +37,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
-	github.com/codewandler/modeldb v0.13.0 // indirect
+	github.com/codewandler/modeldb v0.13.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
