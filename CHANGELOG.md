@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.5 — 2026-04-25
+
+### Fixed
+- Updated to `github.com/codewandler/agentsdk v0.12.3` so Anthropic thinking signatures are preserved across tool-loop replay
+- Added an integration regression test for Sonnet thinking mode plus tool use replaying signed reasoning
+
 ## v0.4.4 — 2026-04-25
 
 ### Changed
