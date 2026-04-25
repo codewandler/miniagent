@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.2 — 2026-04-25
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.17.0`
+- Replaced miniagent-local route/usage provider-model normalization with `agentsdk/usage` runner helpers
+
 ## v0.6.1 — 2026-04-25
 
 ### Changed

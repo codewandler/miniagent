@@ -47,7 +47,7 @@ func (h *runnerEventHandler) handle(event runner.Event) {
 	case runner.ToolResultEvent:
 		display.PrintToolResult(h.agent.out, ev.Output, ev.IsError)
 	case runner.UsageEvent:
-		rec := h.agent.recordTransportUsage(h.turnID, ev.Usage, ev.ProviderIdentity, ev.Model)
+		rec := h.agent.recordRunnerUsage(h.turnID, ev)
 		h.agent.tracker.Record(rec)
 		h.stepUsage = coreusage.Merge(h.stepUsage, rec)
 	case runner.StepDoneEvent:
