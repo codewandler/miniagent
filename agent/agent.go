@@ -13,6 +13,7 @@ import (
 	"github.com/codewandler/agentsdk/runner"
 	agentruntime "github.com/codewandler/agentsdk/runtime"
 	acoreTool "github.com/codewandler/agentsdk/tool"
+	"github.com/codewandler/agentsdk/tools/standard"
 	coreusage "github.com/codewandler/agentsdk/usage"
 	"github.com/codewandler/llmadapter/adapt"
 	"github.com/codewandler/llmadapter/adapterconfig"
@@ -34,7 +35,7 @@ type Agent struct {
 	runtime          *agentruntime.Agent
 	tracker          *coreusage.Tracker
 	allTools         []acoreTool.Tool
-	activation       *ActivationManager
+	toolset          *standard.Toolset
 	inference        InferenceOptions
 	maxSteps         int
 	out              io.Writer
@@ -140,7 +141,7 @@ func (a *Agent) RunTurn(ctx context.Context, turnID int, task string) error {
 		ctx,
 		task,
 		agentruntime.WithTurnMaxSteps(a.maxSteps),
-		agentruntime.WithTurnTools(a.activation.ActiveTools()),
+		agentruntime.WithTurnTools(a.toolset.ActiveTools()),
 		agentruntime.WithTurnProviderIdentity(a.providerIdentity),
 		agentruntime.WithTurnEventHandler(handler.handle),
 	)

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.1 — 2026-04-25
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.16.0`
+- Replaced miniagent-local activation manager wiring with `agentsdk/tools/standard.Toolset`
+- Replaced direct tool-management context key usage with `agentsdk/runtime.WithToolActivation`
+
 ## v0.6.0 — 2026-04-25
 
 ### Removed

@@ -11,6 +11,7 @@ import (
 	"github.com/codewandler/agentsdk/conversation"
 	"github.com/codewandler/agentsdk/runnertest"
 	acoreTool "github.com/codewandler/agentsdk/tool"
+	"github.com/codewandler/agentsdk/tools/standard"
 	"github.com/codewandler/llmadapter/adapt"
 	"github.com/codewandler/llmadapter/adapterconfig"
 	"github.com/codewandler/llmadapter/unified"
@@ -327,7 +328,7 @@ func TestRunTurn_CancelDuringToolExecutionDoesNotCommitPartialTurn(t *testing.T)
 	)
 	tool := blockingCancelTool{name: "cancel_tool", started: make(chan struct{})}
 	a.allTools = []acoreTool.Tool{tool}
-	a.activation = NewActivationManager(a.allTools)
+	a.toolset = standard.NewToolsetFromTools(a.allTools...)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -364,7 +365,7 @@ func TestRunTurn_CancelDuringFirstToolMarksRemainingToolCallsCanceled(t *testing
 	)
 	tool := blockingCancelTool{name: "cancel_tool", started: make(chan struct{})}
 	a.allTools = []acoreTool.Tool{tool}
-	a.activation = NewActivationManager(a.allTools)
+	a.toolset = standard.NewToolsetFromTools(a.allTools...)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

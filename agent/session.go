@@ -54,7 +54,7 @@ func (a *Agent) conversationOptions(includeSessionID bool) []conversation.Option
 		conversation.WithMaxOutputTokens(a.inference.MaxTokens),
 		conversation.WithTemperature(a.inference.Temperature),
 		conversation.WithSystem(BuildSystemPrompt(a.workspace, a.systemOverride)),
-		conversation.WithTools(acoreTool.UnifiedToolsFrom(a.activation.ActiveTools())),
+		conversation.WithTools(acoreTool.UnifiedToolsFrom(a.toolset.ActiveTools())),
 		conversation.WithToolChoice(unified.ToolChoice{Mode: unified.ToolChoiceAuto}),
 		conversation.WithCachePolicy(unified.CachePolicyOn),
 		conversation.WithCacheKey(a.cacheKey()),

@@ -54,7 +54,7 @@ func (a *Agent) runtimeOptions() []agentruntime.Option {
 		agentruntime.WithMaxOutputTokens(a.inference.MaxTokens),
 		agentruntime.WithTemperature(a.inference.Temperature),
 		agentruntime.WithSystem(BuildSystemPrompt(a.workspace, a.systemOverride)),
-		agentruntime.WithTools(a.activation.ActiveTools()),
+		agentruntime.WithTools(a.toolset.ActiveTools()),
 		agentruntime.WithToolChoice(unified.ToolChoice{Mode: unified.ToolChoiceAuto}),
 		agentruntime.WithCachePolicy(unified.CachePolicyOn),
 		agentruntime.WithCacheKey(a.cacheKey()),
