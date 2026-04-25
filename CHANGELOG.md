@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.5 — 2026-04-25
+
+### Added
+- Added regression tests for requested-model auto routing, route usage dimensions, immutable replay resume, and native continuation cache defaults
+
 ## v0.6.4 — 2026-04-25
 
 ### Changed
