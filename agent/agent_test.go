@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/codewandler/agentsdk/conversation"
+	"github.com/codewandler/agentsdk/runnertest"
 	acoreTool "github.com/codewandler/agentsdk/tool"
 	"github.com/codewandler/llmadapter/adapt"
 	"github.com/codewandler/llmadapter/adapterconfig"
@@ -123,7 +124,7 @@ func TestAgent_SessionID(t *testing.T) {
 }
 
 func TestAgent_DefaultRequestUsesCacheKey(t *testing.T) {
-	client := &recordingClient{streams: [][]unified.Event{completedTextStream("response")}}
+	client := runnertest.NewClient(runnertest.TextStream("response", "resp_text"))
 	a := New(
 		WithClient(client),
 		WithWorkspace(t.TempDir()),
@@ -131,14 +132,14 @@ func TestAgent_DefaultRequestUsesCacheKey(t *testing.T) {
 	)
 
 	require.NoError(t, a.RunTurn(context.Background(), 1, "task"))
-	require.Len(t, client.requests, 1)
-	require.Equal(t, unified.CachePolicyOn, client.requests[0].CachePolicy)
-	require.Equal(t, "miniagent:"+a.SessionID(), client.requests[0].CacheKey)
+	require.Len(t, client.Requests(), 1)
+	require.Equal(t, unified.CachePolicyOn, client.RequestAt(0).CachePolicy)
+	require.Equal(t, "miniagent:"+a.SessionID(), client.RequestAt(0).CacheKey)
 }
 
 func TestAgent_PersistsAndResumesSession(t *testing.T) {
 	dir := t.TempDir()
-	firstClient := &recordingClient{streams: [][]unified.Event{completedTextStream("first response")}}
+	firstClient := runnertest.NewClient(runnertest.TextStream("first response", "resp_text"))
 	first := New(
 		WithClient(firstClient),
 		WithWorkspace(t.TempDir()),
@@ -147,13 +148,13 @@ func TestAgent_PersistsAndResumesSession(t *testing.T) {
 	)
 
 	require.NoError(t, first.RunTurn(context.Background(), 1, "first task"))
-	require.Len(t, firstClient.requests, 1)
-	require.Equal(t, unified.CachePolicyOn, firstClient.requests[0].CachePolicy)
-	require.Equal(t, "miniagent:"+first.SessionID(), firstClient.requests[0].CacheKey)
+	require.Len(t, firstClient.Requests(), 1)
+	require.Equal(t, unified.CachePolicyOn, firstClient.RequestAt(0).CachePolicy)
+	require.Equal(t, "miniagent:"+first.SessionID(), firstClient.RequestAt(0).CacheKey)
 	storePath := first.SessionStorePath()
 	require.NotEmpty(t, storePath)
 
-	secondClient := &recordingClient{streams: [][]unified.Event{completedTextStream("second response")}}
+	secondClient := runnertest.NewClient(runnertest.TextStream("second response", "resp_text"))
 	second := New(
 		WithClient(secondClient),
 		WithWorkspace(t.TempDir()),
@@ -164,13 +165,13 @@ func TestAgent_PersistsAndResumesSession(t *testing.T) {
 
 	require.Equal(t, first.SessionID(), second.SessionID())
 	require.NoError(t, second.RunTurn(context.Background(), 1, "second task"))
-	require.Len(t, secondClient.requests, 1)
-	require.Equal(t, unified.CachePolicyOn, secondClient.requests[0].CachePolicy)
-	require.Equal(t, firstClient.requests[0].CacheKey, secondClient.requests[0].CacheKey)
-	require.Len(t, secondClient.requests[0].Messages, 3)
-	requireMessageText(t, secondClient.requests[0].Messages[0], "first task")
-	requireMessageText(t, secondClient.requests[0].Messages[1], "first response")
-	requireMessageText(t, secondClient.requests[0].Messages[2], "second task")
+	require.Len(t, secondClient.Requests(), 1)
+	require.Equal(t, unified.CachePolicyOn, secondClient.RequestAt(0).CachePolicy)
+	require.Equal(t, firstClient.RequestAt(0).CacheKey, secondClient.RequestAt(0).CacheKey)
+	require.Len(t, secondClient.RequestAt(0).Messages, 3)
+	requireMessageText(t, secondClient.RequestAt(0).Messages[0], "first task")
+	requireMessageText(t, secondClient.RequestAt(0).Messages[1], "first response")
+	requireMessageText(t, secondClient.RequestAt(0).Messages[2], "second task")
 }
 
 func TestAgent_PersistsAndResumesSessionUsesNativeContinuation(t *testing.T) {
@@ -180,7 +181,7 @@ func TestAgent_PersistsAndResumesSessionUsesNativeContinuation(t *testing.T) {
 		APIKind:      "openai.responses",
 		NativeModel:  TestModelID,
 	}
-	firstClient := &recordingClient{streams: [][]unified.Event{completedTextStream("first response")}}
+	firstClient := runnertest.NewClient(runnertest.TextStream("first response", "resp_text"))
 	first := New(
 		WithClient(firstClient),
 		WithWorkspace(t.TempDir()),
@@ -193,7 +194,7 @@ func TestAgent_PersistsAndResumesSessionUsesNativeContinuation(t *testing.T) {
 	storePath := first.SessionStorePath()
 	require.NotEmpty(t, storePath)
 
-	secondClient := &recordingClient{streams: [][]unified.Event{completedTextStream("second response")}}
+	secondClient := runnertest.NewClient(runnertest.TextStream("second response", "resp_text"))
 	second := New(
 		WithClient(secondClient),
 		WithWorkspace(t.TempDir()),
@@ -204,10 +205,10 @@ func TestAgent_PersistsAndResumesSessionUsesNativeContinuation(t *testing.T) {
 	second.providerIdentity = providerIdentity
 
 	require.NoError(t, second.RunTurn(context.Background(), 1, "second task"))
-	require.Len(t, secondClient.requests, 1)
-	require.Len(t, secondClient.requests[0].Messages, 1)
-	requireMessageText(t, secondClient.requests[0].Messages[0], "second task")
-	previousResponseID, ok, err := unified.GetExtension[string](secondClient.requests[0].Extensions, unified.ExtOpenAIPreviousResponseID)
+	require.Len(t, secondClient.Requests(), 1)
+	require.Len(t, secondClient.RequestAt(0).Messages, 1)
+	requireMessageText(t, secondClient.RequestAt(0).Messages[0], "second task")
+	previousResponseID, ok, err := unified.GetExtension[string](secondClient.RequestAt(0).Extensions, unified.ExtOpenAIPreviousResponseID)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "resp_text", previousResponseID)
@@ -304,25 +305,6 @@ func (t blockingCancelTool) Execute(ctx acoreTool.Ctx, input json.RawMessage) (a
 	return nil, ctx.Err()
 }
 
-func completedToolCallStream(calls ...unified.ToolCall) []unified.Event {
-	out := make([]unified.Event, 0, len(calls)*2+1)
-	for _, call := range calls {
-		out = append(out,
-			unified.ToolCallStartEvent{Index: call.Index, ID: call.ID, Name: call.Name},
-			unified.ToolCallDoneEvent{Index: call.Index, ID: call.ID, Name: call.Name, Args: call.Arguments},
-		)
-	}
-	out = append(out, unified.CompletedEvent{FinishReason: unified.FinishReasonToolCall, MessageID: "resp_tool"})
-	return out
-}
-
-func completedTextStream(text string) []unified.Event {
-	return []unified.Event{
-		unified.TextDeltaEvent{Text: text},
-		unified.CompletedEvent{FinishReason: unified.FinishReasonStop, MessageID: "resp_text"},
-	}
-}
-
 func requireMessageText(t *testing.T, msg unified.Message, want string) {
 	t.Helper()
 	require.Len(t, msg.Content, 1)
@@ -332,10 +314,10 @@ func requireMessageText(t *testing.T, msg unified.Message, want string) {
 }
 
 func TestRunTurn_CancelDuringToolExecutionDoesNotCommitPartialTurn(t *testing.T) {
-	streamer := &recordingClient{streams: [][]unified.Event{
-		completedToolCallStream(unified.ToolCall{ID: "call_1", Name: "cancel_tool", Arguments: json.RawMessage(`{"x":1}`)}),
-		completedTextStream("ack"),
-	}}
+	streamer := runnertest.NewClient(
+		runnertest.ToolCallStream("resp_tool", runnertest.ToolCall("cancel_tool", "call_1", 0, `{"x":1}`)),
+		runnertest.TextStream("ack", "resp_text"),
+	)
 	a := New(
 		WithClient(streamer),
 		WithWorkspace(t.TempDir()),
@@ -359,22 +341,20 @@ func TestRunTurn_CancelDuringToolExecutionDoesNotCommitPartialTurn(t *testing.T)
 	err := <-done
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
-	require.Len(t, streamer.requests, 1)
+	require.Len(t, streamer.Requests(), 1)
 
 	err = a.RunTurn(context.Background(), 2, "continue")
 	require.NoError(t, err)
-	require.Len(t, streamer.requests, 2)
-	assert.Len(t, streamer.requests[1].Messages, 1)
-	assert.Equal(t, unified.RoleUser, streamer.requests[1].Messages[0].Role)
+	require.Len(t, streamer.Requests(), 2)
+	assert.Len(t, streamer.RequestAt(1).Messages, 1)
+	assert.Equal(t, unified.RoleUser, streamer.RequestAt(1).Messages[0].Role)
 }
 
 func TestRunTurn_CancelDuringFirstToolMarksRemainingToolCallsCanceled(t *testing.T) {
-	streamer := &recordingClient{streams: [][]unified.Event{
-		completedToolCallStream(
-			unified.ToolCall{ID: "call_1", Name: "cancel_tool", Arguments: json.RawMessage(`{"x":1}`), Index: 0},
-			unified.ToolCall{ID: "call_2", Name: "cancel_tool", Arguments: json.RawMessage(`{"x":2}`), Index: 1},
-		),
-	}}
+	streamer := runnertest.NewClient(runnertest.ToolCallStream("resp_tool",
+		runnertest.ToolCall("cancel_tool", "call_1", 0, `{"x":1}`),
+		runnertest.ToolCall("cancel_tool", "call_2", 1, `{"x":2}`),
+	))
 	a := New(
 		WithClient(streamer),
 		WithWorkspace(t.TempDir()),
@@ -398,5 +378,5 @@ func TestRunTurn_CancelDuringFirstToolMarksRemainingToolCallsCanceled(t *testing
 	err := <-done
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
-	require.Len(t, streamer.requests, 1)
+	require.Len(t, streamer.Requests(), 1)
 }

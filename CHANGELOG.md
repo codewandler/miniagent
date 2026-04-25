@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.0 — 2026-04-25
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.13.0`
+- Replaced miniagent-local fake clients and stream helpers with `agentsdk/runnertest`
+- Split agent runtime, session, provider, tool, and reasoning setup out of `agent.go`
+
 ## v0.4.5 — 2026-04-25
 
 ### Fixed

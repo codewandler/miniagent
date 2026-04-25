@@ -10,12 +10,9 @@ import (
 	"time"
 
 	"github.com/codewandler/agentsdk/conversation"
-	"github.com/codewandler/agentsdk/conversation/jsonlstore"
 	"github.com/codewandler/agentsdk/runner"
 	agentruntime "github.com/codewandler/agentsdk/runtime"
 	acoreTool "github.com/codewandler/agentsdk/tool"
-	"github.com/codewandler/agentsdk/tools/standard"
-	"github.com/codewandler/agentsdk/tools/web"
 	coreusage "github.com/codewandler/agentsdk/usage"
 	"github.com/codewandler/llmadapter/adapt"
 	"github.com/codewandler/llmadapter/adapterconfig"
@@ -92,158 +89,6 @@ func NewE(opts ...Option) (*Agent, error) {
 	return a, nil
 }
 
-func (a *Agent) initRuntime() error {
-	if a.client == nil {
-		autoMux := a.autoMux
-		if autoMux == nil {
-			autoMux = adapterconfig.AutoMuxClient
-		}
-		result, err := autoMux(adapterconfig.AutoOptions{
-			EnableEnv:         true,
-			EnableLocalClaude: true,
-			EnableLocalCodex:  true,
-			UseModelDB:        true,
-			DynamicModels:     true,
-			SourceAPI:         a.sourceAPI,
-			Intents: []adapterconfig.AutoIntent{{
-				Name:      DefaultInferenceOptions().Model,
-				SourceAPI: a.sourceAPI,
-			}},
-		})
-		if err != nil {
-			return fmt.Errorf("auto-detect llmadapter providers: %w", err)
-		}
-		a.client = result.Client
-		a.autoResult = result
-	}
-	a.resolveRouteIdentity()
-	if err := a.initSession(context.Background()); err != nil {
-		return err
-	}
-	runtimeAgent, err := agentruntime.New(a.client, a.runtimeOptions()...)
-	if err != nil {
-		return err
-	}
-	a.runtime = runtimeAgent
-	return nil
-}
-
-func (a *Agent) runtimeOptions() []agentruntime.Option {
-	opts := []agentruntime.Option{
-		agentruntime.WithSessionOptions(conversation.WithSessionID(conversation.SessionID(a.sessionID))),
-		agentruntime.WithModel(a.inference.Model),
-		agentruntime.WithMaxOutputTokens(a.inference.MaxTokens),
-		agentruntime.WithTemperature(a.inference.Temperature),
-		agentruntime.WithSystem(BuildSystemPrompt(a.workspace, a.systemOverride)),
-		agentruntime.WithTools(a.activation.ActiveTools()),
-		agentruntime.WithToolChoice(unified.ToolChoice{Mode: unified.ToolChoiceAuto}),
-		agentruntime.WithCachePolicy(unified.CachePolicyOn),
-		agentruntime.WithCacheKey(a.cacheKey()),
-		agentruntime.WithMaxSteps(a.maxSteps),
-		agentruntime.WithToolTimeout(a.toolTimeout),
-		agentruntime.WithProviderIdentity(a.providerIdentity),
-		agentruntime.WithToolContextFactory(func(ctx context.Context) acoreTool.Ctx {
-			return a.newToolCtx(ctx)
-		}),
-	}
-	if reasoning, ok := a.reasoningConfig(); ok {
-		opts = append(opts, agentruntime.WithReasoning(reasoning))
-	}
-	if a.session != nil {
-		opts = append(opts, agentruntime.WithSession(a.session))
-	}
-	return opts
-}
-
-func (a *Agent) initSession(ctx context.Context) error {
-	if a.resumeSession == "" && a.sessionStoreDir == "" {
-		return nil
-	}
-	opts := a.conversationOptions(false)
-	if a.resumeSession != "" {
-		store := jsonlstore.Open(a.resumeSession)
-		session, err := conversation.Resume(ctx, store, "", opts...)
-		if err != nil {
-			return fmt.Errorf("resume session %s: %w", a.resumeSession, err)
-		}
-		a.session = session
-		a.sessionID = string(session.SessionID())
-		a.sessionStorePath = a.resumeSession
-		return nil
-	}
-	return a.startPersistentSession(time.Now())
-}
-
-func (a *Agent) startPersistentSession(now time.Time) error {
-	if a.sessionStoreDir == "" {
-		a.session = nil
-		a.sessionStorePath = ""
-		return nil
-	}
-	path := filepath.Join(a.sessionStoreDir, fmt.Sprintf("%s-%s.jsonl", now.UTC().Format("20060102T150405Z"), a.sessionID))
-	store := jsonlstore.Open(path)
-	opts := append(a.conversationOptions(true),
-		conversation.WithStore(store),
-		conversation.WithConversationID(conversation.ConversationID("conv_"+a.sessionID)),
-	)
-	a.session = conversation.New(opts...)
-	a.sessionStorePath = path
-	return nil
-}
-
-func (a *Agent) conversationOptions(includeSessionID bool) []conversation.Option {
-	opts := []conversation.Option{
-		conversation.WithModel(a.inference.Model),
-		conversation.WithMaxOutputTokens(a.inference.MaxTokens),
-		conversation.WithTemperature(a.inference.Temperature),
-		conversation.WithSystem(BuildSystemPrompt(a.workspace, a.systemOverride)),
-		conversation.WithTools(acoreTool.UnifiedToolsFrom(a.activation.ActiveTools())),
-		conversation.WithToolChoice(unified.ToolChoice{Mode: unified.ToolChoiceAuto}),
-		conversation.WithCachePolicy(unified.CachePolicyOn),
-		conversation.WithCacheKey(a.cacheKey()),
-	}
-	if includeSessionID {
-		opts = append([]conversation.Option{conversation.WithSessionID(conversation.SessionID(a.sessionID))}, opts...)
-	}
-	if reasoning, ok := a.reasoningConfig(); ok {
-		opts = append(opts, conversation.WithReasoning(reasoning))
-	}
-	return opts
-}
-
-func (a *Agent) cacheKey() string {
-	if a.sessionID == "" {
-		return ""
-	}
-	return "miniagent:" + a.sessionID
-}
-
-func (a *Agent) resolveRouteIdentity() {
-	a.providerIdentity = conversation.ProviderIdentity{}
-	a.resolvedProvider = ""
-	a.resolvedModel = ""
-	summary, ok := a.autoResult.RouteSummary(a.sourceAPI, a.inference.Model)
-	if !ok {
-		return
-	}
-	a.resolvedProvider = summary.Provider
-	a.resolvedModel = summary.NativeModel
-	a.providerIdentity = conversation.ProviderIdentity{
-		ProviderName: summary.Provider,
-		APIKind:      string(summary.ProviderAPI),
-		NativeModel:  summary.NativeModel,
-	}
-}
-
-// setupTools initializes all tools from agentsdk packages.
-func (a *Agent) setupTools(workspace string, toolTimeout time.Duration) {
-	a.allTools = standard.Tools(standard.Options{
-		WebSearchProvider:     web.DefaultSearchProviderFromEnv(),
-		IncludeToolManagement: true,
-	})
-	a.activation = NewActivationManager(a.allTools)
-}
-
 // SessionID returns the current session identifier.
 func (a *Agent) SessionID() string { return a.sessionID }
 
@@ -309,15 +154,4 @@ func (a *Agent) RunTurn(ctx context.Context, turnID int, task string) error {
 		return fmt.Errorf("provider=%s model=%s: %w", a.providerName(), a.resolvedModel, err)
 	}
 	return nil
-}
-
-func (a *Agent) reasoningConfig() (unified.ReasoningConfig, bool) {
-	switch a.inference.Thinking {
-	case ThinkingModeOff:
-		return unified.ReasoningConfig{}, false
-	case ThinkingModeAuto, "":
-		return unified.ReasoningConfig{}, false
-	default:
-		return unified.ReasoningConfig{Effort: a.inference.Effort, Expose: true}, true
-	}
 }
