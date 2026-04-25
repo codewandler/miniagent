@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.3 — 2026-04-25
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.18.0`
+- Reused `agentsdk/runtime.SessionOptions` so miniagent no longer mirrors runtime defaults separately for persistent sessions
+
 ## v0.6.2 — 2026-04-25
 
 ### Changed

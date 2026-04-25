@@ -8,8 +8,7 @@ import (
 
 	"github.com/codewandler/agentsdk/conversation"
 	"github.com/codewandler/agentsdk/conversation/jsonlstore"
-	acoreTool "github.com/codewandler/agentsdk/tool"
-	"github.com/codewandler/llmadapter/unified"
+	agentruntime "github.com/codewandler/agentsdk/runtime"
 )
 
 func (a *Agent) initSession(ctx context.Context) error {
@@ -49,23 +48,7 @@ func (a *Agent) startPersistentSession(now time.Time) error {
 }
 
 func (a *Agent) conversationOptions(includeSessionID bool) []conversation.Option {
-	opts := []conversation.Option{
-		conversation.WithModel(a.inference.Model),
-		conversation.WithMaxOutputTokens(a.inference.MaxTokens),
-		conversation.WithTemperature(a.inference.Temperature),
-		conversation.WithSystem(BuildSystemPrompt(a.workspace, a.systemOverride)),
-		conversation.WithTools(acoreTool.UnifiedToolsFrom(a.toolset.ActiveTools())),
-		conversation.WithToolChoice(unified.ToolChoice{Mode: unified.ToolChoiceAuto}),
-		conversation.WithCachePolicy(unified.CachePolicyOn),
-		conversation.WithCacheKey(a.cacheKey()),
-	}
-	if includeSessionID {
-		opts = append([]conversation.Option{conversation.WithSessionID(conversation.SessionID(a.sessionID))}, opts...)
-	}
-	if reasoning, ok := a.reasoningConfig(); ok {
-		opts = append(opts, conversation.WithReasoning(reasoning))
-	}
-	return opts
+	return agentruntime.SessionOptions(a.baseRuntimeOptions(includeSessionID)...)
 }
 
 func (a *Agent) cacheKey() string {

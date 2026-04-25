@@ -47,9 +47,8 @@ func (a *Agent) initRuntime() error {
 	return nil
 }
 
-func (a *Agent) runtimeOptions() []agentruntime.Option {
+func (a *Agent) baseRuntimeOptions(includeSessionID bool) []agentruntime.Option {
 	opts := []agentruntime.Option{
-		agentruntime.WithSessionOptions(conversation.WithSessionID(conversation.SessionID(a.sessionID))),
 		agentruntime.WithModel(a.inference.Model),
 		agentruntime.WithMaxOutputTokens(a.inference.MaxTokens),
 		agentruntime.WithTemperature(a.inference.Temperature),
@@ -65,9 +64,17 @@ func (a *Agent) runtimeOptions() []agentruntime.Option {
 			return a.newToolCtx(ctx)
 		}),
 	}
+	if includeSessionID {
+		opts = append([]agentruntime.Option{agentruntime.WithSessionOptions(conversation.WithSessionID(conversation.SessionID(a.sessionID)))}, opts...)
+	}
 	if reasoning, ok := a.reasoningConfig(); ok {
 		opts = append(opts, agentruntime.WithReasoning(reasoning))
 	}
+	return opts
+}
+
+func (a *Agent) runtimeOptions() []agentruntime.Option {
+	opts := a.baseRuntimeOptions(true)
 	if a.session != nil {
 		opts = append(opts, agentruntime.WithSession(a.session))
 	}
