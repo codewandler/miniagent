@@ -46,6 +46,7 @@ type Agent struct {
 	sessionStoreDir  string
 	resumeSession    string
 	sessionStorePath string
+	contextBudget    int
 	verbose          bool
 }
 

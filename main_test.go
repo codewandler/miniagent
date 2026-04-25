@@ -34,3 +34,23 @@ func TestResolveSessionPathFindsSessionID(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, path, got)
 }
+
+func TestResolveContextBudgetPrefersFlag(t *testing.T) {
+	t.Setenv("MINIAGENT_CONTEXT_BUDGET", "100")
+	got, err := resolveContextBudget(42)
+	require.NoError(t, err)
+	require.Equal(t, 42, got)
+}
+
+func TestResolveContextBudgetFromEnv(t *testing.T) {
+	t.Setenv("MINIAGENT_CONTEXT_BUDGET", "100")
+	got, err := resolveContextBudget(0)
+	require.NoError(t, err)
+	require.Equal(t, 100, got)
+}
+
+func TestResolveContextBudgetRejectsInvalidEnv(t *testing.T) {
+	t.Setenv("MINIAGENT_CONTEXT_BUDGET", "nope")
+	_, err := resolveContextBudget(0)
+	require.Error(t, err)
+}

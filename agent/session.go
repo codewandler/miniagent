@@ -65,6 +65,9 @@ func (a *Agent) conversationOptions(includeSessionID bool) []conversation.Option
 	if reasoning, ok := a.reasoningConfig(); ok {
 		opts = append(opts, conversation.WithReasoning(reasoning))
 	}
+	if a.contextBudget > 0 {
+		opts = append(opts, conversation.WithProjectionPolicy(a.contextProjectionPolicy()))
+	}
 	return opts
 }
 
@@ -73,4 +76,12 @@ func (a *Agent) cacheKey() string {
 		return ""
 	}
 	return "miniagent:" + a.sessionID
+}
+
+func (a *Agent) contextProjectionPolicy() conversation.ProjectionPolicy {
+	return conversation.NewBudgetProjectionPolicy(conversation.DefaultProjectionPolicy(), conversation.BudgetOptions{
+		MaxTokens:               a.contextBudget,
+		ProtectedRecentMessages: 8,
+		CompactionSummary:       "Earlier conversation history was compacted by miniagent's context budget. Use the remaining recent messages as the authoritative context.",
+	})
 }

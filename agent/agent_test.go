@@ -214,6 +214,39 @@ func TestAgent_PersistsAndResumesSessionUsesNativeContinuation(t *testing.T) {
 	require.Equal(t, "resp_text", previousResponseID)
 }
 
+func TestAgent_ContextBudgetCompactsProjectedHistory(t *testing.T) {
+	client := runnertest.NewClient(
+		runnertest.TextStream("response one", "msg_1"),
+		runnertest.TextStream("response two", "msg_2"),
+		runnertest.TextStream("response three", "msg_3"),
+		runnertest.TextStream("response four", "msg_4"),
+		runnertest.TextStream("response five", "msg_5"),
+		runnertest.TextStream("response six", "msg_6"),
+	)
+	a := New(
+		WithClient(client),
+		WithWorkspace(t.TempDir()),
+		WithContextBudget(20),
+		WithInferenceOptions(InferenceOptions{Model: TestServiceID + "/" + TestModelID, MaxTokens: 1000}),
+	)
+
+	for i, task := range []string{
+		"task one with enough words to use some budget",
+		"task two with enough words to use some budget",
+		"task three with enough words to use some budget",
+		"task four with enough words to use some budget",
+		"task five with enough words to use some budget",
+		"task six",
+	} {
+		require.NoError(t, a.RunTurn(context.Background(), i+1, task))
+	}
+
+	require.Len(t, client.Requests(), 6)
+	require.NotEmpty(t, client.RequestAt(5).Messages)
+	require.Equal(t, unified.RoleSystem, client.RequestAt(5).Messages[0].Role)
+	requireMessageText(t, client.RequestAt(5).Messages[0], "Earlier conversation history was compacted by miniagent's context budget. Use the remaining recent messages as the authoritative context.")
+}
+
 func TestAgent_WithMaxSteps(t *testing.T) {
 	a := &Agent{}
 	WithMaxSteps(50)(a)

@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.1 — 2026-04-25
+
+### Added
+- Added opt-in context budgeting with `--context-budget` and `MINIAGENT_CONTEXT_BUDGET`
+- Compact omitted history into a projection-only summary message while preserving the durable session tree
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.14.0`
+
 ## v0.5.0 — 2026-04-25
 
 ### Changed

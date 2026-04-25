@@ -98,6 +98,15 @@ func WithResumeSession(path string) Option { return func(a *Agent) { a.resumeSes
 // WithVerbose enables verbose runtime diagnostics.
 func WithVerbose(verbose bool) Option { return func(a *Agent) { a.verbose = verbose } }
 
+// WithContextBudget enables approximate token-aware history projection budgeting.
+func WithContextBudget(tokens int) Option {
+	return func(a *Agent) {
+		if tokens > 0 {
+			a.contextBudget = tokens
+		}
+	}
+}
+
 // WithClient injects a llmadapter client. Production callers should normally
 // rely on auto-detection instead.
 func WithClient(client unified.Client) Option { return func(a *Agent) { a.client = client } }
