@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/codewandler/agentsdk/conversation"
 	acoreTool "github.com/codewandler/agentsdk/tool"
 	"github.com/codewandler/llmadapter/adapt"
 	"github.com/codewandler/llmadapter/adapterconfig"
@@ -170,6 +171,46 @@ func TestAgent_PersistsAndResumesSession(t *testing.T) {
 	requireMessageText(t, secondClient.requests[0].Messages[0], "first task")
 	requireMessageText(t, secondClient.requests[0].Messages[1], "first response")
 	requireMessageText(t, secondClient.requests[0].Messages[2], "second task")
+}
+
+func TestAgent_PersistsAndResumesSessionUsesNativeContinuation(t *testing.T) {
+	dir := t.TempDir()
+	providerIdentity := conversation.ProviderIdentity{
+		ProviderName: TestServiceID,
+		APIKind:      "openai.responses",
+		NativeModel:  TestModelID,
+	}
+	firstClient := &recordingClient{streams: [][]unified.Event{completedTextStream("first response")}}
+	first := New(
+		WithClient(firstClient),
+		WithWorkspace(t.TempDir()),
+		WithSessionStoreDir(dir),
+		WithInferenceOptions(InferenceOptions{Model: TestServiceID + "/" + TestModelID, MaxTokens: 1000}),
+	)
+	first.providerIdentity = providerIdentity
+
+	require.NoError(t, first.RunTurn(context.Background(), 1, "first task"))
+	storePath := first.SessionStorePath()
+	require.NotEmpty(t, storePath)
+
+	secondClient := &recordingClient{streams: [][]unified.Event{completedTextStream("second response")}}
+	second := New(
+		WithClient(secondClient),
+		WithWorkspace(t.TempDir()),
+		WithSessionStoreDir(dir),
+		WithResumeSession(storePath),
+		WithInferenceOptions(InferenceOptions{Model: TestServiceID + "/" + TestModelID, MaxTokens: 1000}),
+	)
+	second.providerIdentity = providerIdentity
+
+	require.NoError(t, second.RunTurn(context.Background(), 1, "second task"))
+	require.Len(t, secondClient.requests, 1)
+	require.Len(t, secondClient.requests[0].Messages, 1)
+	requireMessageText(t, secondClient.requests[0].Messages[0], "second task")
+	previousResponseID, ok, err := unified.GetExtension[string](secondClient.requests[0].Extensions, unified.ExtOpenAIPreviousResponseID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "resp_text", previousResponseID)
 }
 
 func TestAgent_WithMaxSteps(t *testing.T) {

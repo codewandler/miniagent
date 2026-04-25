@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.4 — 2026-04-25
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.12.2`
+- Updated to `github.com/codewandler/llmadapter v0.48.10`
+- Inherited agentsdk native Responses continuation projection, so compatible resumed sessions can use provider `previous_response_id` instead of replaying the full history
+- Stream plain prose before conservative markdown block boundaries so normal assistant text appears earlier
+
 ## v0.4.3 — 2026-04-25
 
 ### Changed
