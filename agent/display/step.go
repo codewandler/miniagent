@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
+	"unicode"
 
 	acoremd "github.com/codewandler/agentsdk/markdown"
 )
@@ -24,6 +26,7 @@ type StepDisplay struct {
 	mdBuffer            *acoremd.Buffer
 	markdownRender      func(string) string
 	hasRenderedMarkdown bool
+	atLineStart         bool
 }
 
 // NewStepDisplay creates a new StepDisplay for the given writer.
@@ -36,7 +39,7 @@ func NewStepDisplayWithRenderer(w io.Writer, renderer func(string) string) *Step
 	if renderer == nil {
 		renderer = func(s string) string { return s }
 	}
-	d := &StepDisplay{w: w, state: StateIdle, markdownRender: renderer}
+	d := &StepDisplay{w: w, state: StateIdle, markdownRender: renderer, atLineStart: true}
 	d.mdBuffer = acoremd.NewBuffer(func(blocks []acoremd.Block) {
 		for _, block := range blocks {
 			d.writeRenderedMarkdown(block.Markdown)
@@ -62,7 +65,7 @@ func (d *StepDisplay) WriteText(chunk string) {
 	if d.state != StateText {
 		d.state = StateText
 	}
-	_, _ = d.mdBuffer.WriteString(chunk)
+	d.writeTextChunk(chunk)
 }
 
 // PrintToolCall displays a tool call header and resets any open ANSI state.
@@ -97,6 +100,64 @@ func (d *StepDisplay) writeRenderedMarkdown(md string) {
 	d.hasRenderedMarkdown = true
 }
 
+func (d *StepDisplay) writeTextChunk(chunk string) {
+	for chunk != "" {
+		if d.mdBuffer.Pending() != "" || (d.atLineStart && shouldBufferMarkdownLineStart(chunk)) {
+			_, _ = d.mdBuffer.WriteString(chunk)
+			if d.mdBuffer.Pending() == "" {
+				d.atLineStart = strings.HasSuffix(chunk, "\n")
+			}
+			return
+		}
+		n := len(chunk)
+		if idx := strings.IndexByte(chunk, '\n'); idx >= 0 {
+			n = idx + 1
+		}
+		part := chunk[:n]
+		fmt.Fprint(d.w, part)
+		d.atLineStart = strings.HasSuffix(part, "\n")
+		chunk = chunk[n:]
+	}
+}
+
+func shouldBufferMarkdownLineStart(s string) bool {
+	if s == "" {
+		return false
+	}
+	segment := s
+	if idx := strings.IndexByte(segment, '\n'); idx >= 0 {
+		segment = segment[:idx]
+	}
+	trimmed := strings.TrimLeft(segment, " ")
+	indent := len(segment) - len(trimmed)
+	if trimmed == "" {
+		return indent > 0 && indent <= 3 && !strings.Contains(s, "\n")
+	}
+	if indent >= 4 {
+		return true
+	}
+	switch trimmed[0] {
+	case '#', '>', '|', '<', '`', '~':
+		return true
+	case '-', '*', '+':
+		return len(trimmed) == 1 || trimmed[1] == ' ' || trimmed[1] == '\t' || trimmed[1] == trimmed[0]
+	default:
+		return startsOrderedList(trimmed)
+	}
+}
+
+func startsOrderedList(s string) bool {
+	if s == "" || !unicode.IsDigit(rune(s[0])) {
+		return false
+	}
+	for i, r := range s {
+		if !unicode.IsDigit(r) {
+			return (r == '.' || r == ')') && i+1 < len(s) && (s[i+1] == ' ' || s[i+1] == '\t')
+		}
+	}
+	return len(s) <= 9
+}
+
 // End closes any open ANSI state. Call after streaming completes.
 func (d *StepDisplay) End() {
 	switch d.state {
@@ -108,4 +169,5 @@ func (d *StepDisplay) End() {
 		d.hasRenderedMarkdown = false
 	}
 	d.state = StateIdle
+	d.atLineStart = true
 }

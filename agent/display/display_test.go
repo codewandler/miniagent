@@ -163,18 +163,32 @@ func TestStepDisplay_StateTransitions(t *testing.T) {
 		assert.Contains(t, out, Reset)
 	})
 
-	t.Run("text only paragraph waits until stable boundary", func(t *testing.T) {
+	t.Run("plain prose streams immediately", func(t *testing.T) {
 		var buf strings.Builder
 		sd := NewStepDisplayWithRenderer(&buf, plain)
 
 		sd.WriteText("hello ")
-		assert.NotContains(t, buf.String(), "hello")
+		assert.Contains(t, buf.String(), "hello ")
 		sd.WriteText("world\n\n")
 		sd.End()
 
 		out := buf.String()
 		assert.Contains(t, out, "hello world")
 		assert.NotContains(t, out, Dim)
+	})
+
+	t.Run("list markdown still waits for stable boundary", func(t *testing.T) {
+		var buf strings.Builder
+		sd := NewStepDisplayWithRenderer(&buf, plain)
+
+		sd.WriteText("- one\n- two\n")
+		assert.Empty(t, buf.String())
+		sd.WriteText("\n")
+		sd.End()
+
+		out := buf.String()
+		assert.Contains(t, out, "- one")
+		assert.Contains(t, out, "- two")
 	})
 
 	t.Run("rendered blocks use controlled separators", func(t *testing.T) {
