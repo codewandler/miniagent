@@ -45,6 +45,26 @@ miniagent
 miniagent --workspace /path/to/project "write tests for main.go"
 ```
 
+## Sessions
+
+Interactive and one-shot runs can persist sessions as JSONL files:
+
+```sh
+miniagent "start investigating the failing tests"
+miniagent --continue "keep going from the last session"
+miniagent --session 20260425T120000Z-abc123.jsonl "continue this session"
+miniagent --sessions-dir /tmp/miniagent-sessions --continue "continue there"
+```
+
+The default session store is `~/.miniagent/sessions`. `--continue` resumes the
+most recently active session in that directory, preserving the session id and
+cache key.
+
+miniagent uses `cache_policy=on` by default with a stable per-session cache key.
+Conversation history is not trimmed, compacted, or summarized automatically;
+provider-visible history is kept stable so caching, native continuation, and
+tool-call replay stay correct.
+
 ## Models
 
 miniagent builds its model client with `llmadapter` auto-detection. It looks for
@@ -58,11 +78,11 @@ best detected provider/model for this machine:
 miniagent "say pong"
 ```
 
-You can also pass an explicit provider-native model ID. The default intent route
-stays configured, and the requested model goes through llmadapter's dynamic
-passthrough route:
+You can also pass a model alias or explicit provider-native model ID. The
+requested model is passed into llmadapter auto-detection as the intent:
 
 ```sh
+miniagent -m haiku "say pong"
 miniagent -m gpt-5.4 "say pong"
 miniagent -m claude-sonnet-4-6 "say pong"
 ```

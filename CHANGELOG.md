@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.7 — 2026-04-26
+
+### Added
+- Committed the `/loop` REPL command implementation plan under `.agents/plans`
+- Documented current agentsdk/llmadapter architecture and session/cache behavior for future agents
+
 ## v0.6.6 — 2026-04-25
 
 ### Changed

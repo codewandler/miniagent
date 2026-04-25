@@ -8,28 +8,52 @@ and what the rules are for self-modification.
 
 ## Architecture
 
-miniagent runs a tight loop:
+miniagent is now a thin terminal product shell on top of `agentsdk` and
+`llmadapter`.
+
+The current runtime path is:
 
 ```
-user task → LLM → (optional) bash tool call → result back to LLM → repeat
+CLI/REPL → agent.Agent → agentsdk/runtime.Agent → agentsdk/runner
+        → llmadapter/unified.Client
+        → agentsdk/tools execution
+        → agentsdk/conversation session commit
 ```
 
-The LLM gets one tool: **bash** — it runs arbitrary shell commands in the
-configured workspace directory and receives combined stdout+stderr back.
-The loop continues until the model stops calling the tool (task done) or
-`--max-steps` is reached.
+miniagent owns terminal UX, CLI flags, session path policy, workspace defaults,
+and its system prompt. Generic agent mechanics live in `agentsdk`:
+
+- model/tool loop: `agentsdk/runtime` and `agentsdk/runner`
+- durable sessions, replay, native continuation: `agentsdk/conversation`
+- tool activation and standard tools: `agentsdk/tools/standard`
+- usage aggregation and route dimensions: `agentsdk/usage`
+- provider auto-detection and route identity helpers: `agentsdk/runtime`
+
+Provider construction uses `llmadapter` auto mux. The requested model is passed
+as the auto-detection intent, so aliases such as `haiku` are resolved by
+`llmadapter`, not by miniagent-local routing code.
+
+Provider history is intentionally immutable. Do not add projection-time
+trimming, compaction, summarization, or context-budget rewriting in miniagent.
+That breaks provider cache reuse, native continuation, tool-call adjacency, and
+model-visible continuity. Usage response data is for observability and display,
+not automatic history mutation.
 
 ### Key source files
 
 | File | Role |
 |---|---|
-| `main.go` | CLI entry point, flag definitions, provider setup |
+| `main.go` | CLI entry point, flag definitions, session path resolution |
 | `agent/system.go` | **System prompt** — the highest-leverage file for self-improvement |
-| `agent/agent.go` | Core LLM→tool loop, history management, streaming, usage tracking |
+| `agent/agent.go` | Product-level agent wrapper around agentsdk runtime |
 | `agent/options.go` | Agent and inference configuration options |
-| `agent/toolexec.go` | Tool execution and context adapter |
+| `agent/runtime.go` | llmadapter auto mux setup and agentsdk runtime options |
+| `agent/session.go` | JSONL session creation/resume policy |
+| `agent/provider.go` | resolved route identity wiring for display/defaults |
+| `agent/usage.go` | miniagent-specific usage wrappers over agentsdk/usage |
+| `agent/tools.go` | standard toolset selection |
+| `agent/toolexec.go` | Tool context adapter |
 | `agent/repl.go` | Interactive REPL mode |
-| `agent/activation.go` | Tool activation state management |
 | `agent/display/` | Terminal output formatting package |
 
 ### Display package (`agent/display/`)
@@ -42,11 +66,19 @@ The loop continues until the model stops calling the tool (task done) or
 | `step.go` | StepDisplay state machine for streaming output |
 | `usage.go` | Usage line printing (step, turn, session) |
 
-### Supporting packages
+### Current dependency chain
 
-| Package | Role |
-|---|---|
-| `agent/usage/` | Usage tracking and aggregation (422 lines) |
+When upgrading provider behavior, move the released versions through the chain:
+
+1. update/release `../llmadapter`
+2. update/release `../agentsdk`
+3. update/release this repo
+4. run `task install`
+5. smoke test the installed `miniagent` binary
+
+If `llmadapter resolve <model>` works but `miniagent -m <model>` fails, first
+verify that the installed miniagent binary was rebuilt after the dependency
+update.
 
 ---
 
@@ -131,6 +163,10 @@ be respected by any agent modifying this codebase:
 ---
 
 ## Documentation and changelog conventions
+
+Regular feature/release work now uses the top-level semver changelog entries
+at the top of `CHANGELOG.md`. The older revision-based convention below still
+applies specifically to the `task evolve` self-improvement loop.
 
 Every accepted improvement must update:
 
