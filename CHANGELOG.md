@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.0 — 2026-04-25
+
+### Removed
+- Removed `--context-budget`, `MINIAGENT_CONTEXT_BUDGET`, and miniagent-local context compaction because provider history must remain immutable for caching and continuation
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.15.0`
+
 ## v0.5.1 — 2026-04-25
 
 ### Added

@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -28,19 +27,18 @@ type InferenceConfig = agent.InferenceOptions
 
 func rootCmd() *cobra.Command {
 	var (
-		inference     InferenceConfig = agent.DefaultInferenceOptions()
-		maxSteps                      = 30
-		workspace     string
-		systemPrompt  string
-		totalTimeout  time.Duration
-		toolTimeout   time.Duration
-		thinkingFlag  string
-		effortFlag    string
-		session       string
-		continueLast  bool
-		sessionsDir   string
-		contextBudget int
-		verbose       bool
+		inference    InferenceConfig = agent.DefaultInferenceOptions()
+		maxSteps                     = 30
+		workspace    string
+		systemPrompt string
+		totalTimeout time.Duration
+		toolTimeout  time.Duration
+		thinkingFlag string
+		effortFlag   string
+		session      string
+		continueLast bool
+		sessionsDir  string
+		verbose      bool
 	)
 	cmd := &cobra.Command{
 		Use:   "miniagent [task]",
@@ -58,11 +56,7 @@ With a positional argument it runs the task once and exits.`,
 			if effortFlag != "" {
 				inference.Effort = unified.ReasoningEffort(effortFlag)
 			}
-			budget, err := resolveContextBudget(contextBudget)
-			if err != nil {
-				return err
-			}
-			return execute(args, inference, maxSteps, workspace, systemPrompt, totalTimeout, toolTimeout, session, continueLast, sessionsDir, budget, verbose)
+			return execute(args, inference, maxSteps, workspace, systemPrompt, totalTimeout, toolTimeout, session, continueLast, sessionsDir, verbose)
 		},
 	}
 	f := cmd.Flags()
@@ -79,7 +73,6 @@ With a positional argument it runs the task once and exits.`,
 	f.StringVar(&session, "session", "", "Resume a session by id or JSONL path")
 	f.BoolVar(&continueLast, "continue", false, "Resume the most recently active session")
 	f.StringVar(&sessionsDir, "sessions-dir", "", "Session storage directory (default: ~/.miniagent/sessions)")
-	f.IntVar(&contextBudget, "context-budget", 0, "Approximate input token budget for projected conversation history (0 = disabled, env: MINIAGENT_CONTEXT_BUDGET)")
 	f.BoolVarP(&verbose, "verbose", "v", false, "Show resolved provider/model diagnostics")
 	_ = cmd.RegisterFlagCompletionFunc("model", completeModelFlag)
 
@@ -193,7 +186,7 @@ func containsFold(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-func execute(args []string, inference InferenceConfig, maxSteps int, workspace, systemPrompt string, totalTimeout, toolTimeout time.Duration, session string, continueLast bool, sessionsDir string, contextBudget int, verbose bool) error {
+func execute(args []string, inference InferenceConfig, maxSteps int, workspace, systemPrompt string, totalTimeout, toolTimeout time.Duration, session string, continueLast bool, sessionsDir string, verbose bool) error {
 	if workspace == "" {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -219,9 +212,6 @@ func execute(args []string, inference InferenceConfig, maxSteps int, workspace, 
 		agent.WithSessionStoreDir(resolvedSessionsDir),
 		agent.WithVerbose(verbose),
 	}
-	if contextBudget > 0 {
-		opts = append(opts, agent.WithContextBudget(contextBudget))
-	}
 	if resumePath != "" {
 		opts = append(opts, agent.WithResumeSession(resumePath))
 	}
@@ -245,21 +235,6 @@ func execute(args []string, inference InferenceConfig, maxSteps int, workspace, 
 		return err
 	}
 	return agent.RunREPL(ctx, a, os.Stdin)
-}
-
-func resolveContextBudget(flagValue int) (int, error) {
-	if flagValue > 0 {
-		return flagValue, nil
-	}
-	raw := strings.TrimSpace(os.Getenv("MINIAGENT_CONTEXT_BUDGET"))
-	if raw == "" {
-		return 0, nil
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil || value < 0 {
-		return 0, fmt.Errorf("invalid MINIAGENT_CONTEXT_BUDGET %q", raw)
-	}
-	return value, nil
 }
 
 func defaultSessionDir(override string) (string, error) {

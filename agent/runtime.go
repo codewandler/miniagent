@@ -68,9 +68,6 @@ func (a *Agent) runtimeOptions() []agentruntime.Option {
 	if reasoning, ok := a.reasoningConfig(); ok {
 		opts = append(opts, agentruntime.WithReasoning(reasoning))
 	}
-	if a.contextBudget > 0 {
-		opts = append(opts, agentruntime.WithProjectionPolicy(a.contextProjectionPolicy()))
-	}
 	if a.session != nil {
 		opts = append(opts, agentruntime.WithSession(a.session))
 	}
