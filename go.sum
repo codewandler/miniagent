@@ -60,6 +60,8 @@ github.com/codewandler/agentsdk v0.11.4 h1:7ECVOddsWAVvMapaR6cBx5gXfe61WlF0RdAp8
 github.com/codewandler/agentsdk v0.11.4/go.mod h1:mHoai6wz9t8b4InBh8sa+hutaVDI34h/11bH2+2jgzg=
 github.com/codewandler/llmadapter v0.48.6 h1:aLtdJWifpXz08CD1/Wsztosr8Lh/D5XaKp5hf/08lJo=
 github.com/codewandler/llmadapter v0.48.6/go.mod h1:H5IctLSlNLm+1GBjEDHs+coYQebARNl8q4+TYzzIzYY=
+github.com/codewandler/llmadapter v0.48.7 h1:wD+g3P615iohl9UX6dRQHLrkuwLWCFaCWAWcIBeryxE=
+github.com/codewandler/llmadapter v0.48.7/go.mod h1:H5IctLSlNLm+1GBjEDHs+coYQebARNl8q4+TYzzIzYY=
 github.com/codewandler/modeldb v0.13.1 h1:NuFAPWaY4/XYin94LkLrbQXBxOsaJR8QQv1GA1wt8U4=
 github.com/codewandler/modeldb v0.13.1/go.mod h1:9TmlPU6VjIqwxSAj6/qrO/jzV+HRSqc9zJJXzrEMklQ=
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
