@@ -109,7 +109,7 @@ func TestAgentAutoMuxUsesIntentAndDynamicModels(t *testing.T) {
 	require.True(t, got.DynamicModels)
 	require.Equal(t, adapt.ApiOpenAIResponses, got.SourceAPI)
 	require.Len(t, got.Intents, 1)
-	require.Equal(t, DefaultInferenceOptions().Model, got.Intents[0].Name)
+	require.Equal(t, "gpt-4.1-mini", got.Intents[0].Name)
 	require.Equal(t, adapt.ApiOpenAIResponses, got.Intents[0].SourceAPI)
 }
 

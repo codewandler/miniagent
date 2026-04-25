@@ -2,35 +2,18 @@ package agent
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/codewandler/agentsdk/conversation"
 	agentruntime "github.com/codewandler/agentsdk/runtime"
 	acoreTool "github.com/codewandler/agentsdk/tool"
-	"github.com/codewandler/llmadapter/adapterconfig"
 	"github.com/codewandler/llmadapter/unified"
 )
 
 func (a *Agent) initRuntime() error {
 	if a.client == nil {
-		autoMux := a.autoMux
-		if autoMux == nil {
-			autoMux = adapterconfig.AutoMuxClient
-		}
-		result, err := autoMux(adapterconfig.AutoOptions{
-			EnableEnv:         true,
-			EnableLocalClaude: true,
-			EnableLocalCodex:  true,
-			UseModelDB:        true,
-			DynamicModels:     true,
-			SourceAPI:         a.sourceAPI,
-			Intents: []adapterconfig.AutoIntent{{
-				Name:      DefaultInferenceOptions().Model,
-				SourceAPI: a.sourceAPI,
-			}},
-		})
+		result, err := agentruntime.AutoMuxClient(a.inference.Model, a.sourceAPI, a.autoMux)
 		if err != nil {
-			return fmt.Errorf("auto-detect llmadapter providers: %w", err)
+			return err
 		}
 		a.client = result.Client
 		a.autoResult = result

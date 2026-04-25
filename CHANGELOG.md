@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.4 — 2026-04-25
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.19.0`
+- Replaced miniagent-local llmadapter auto-mux defaults and route identity conversion with `agentsdk/runtime` helpers
+- Use the requested model as the llmadapter auto-detection intent
+
 ## v0.6.3 — 2026-04-25
 
 ### Changed
