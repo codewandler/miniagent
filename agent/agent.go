@@ -137,6 +137,8 @@ func (a *Agent) runtimeOptions() []agentruntime.Option {
 		agentruntime.WithSystem(BuildSystemPrompt(a.workspace, a.systemOverride)),
 		agentruntime.WithTools(a.activation.ActiveTools()),
 		agentruntime.WithToolChoice(unified.ToolChoice{Mode: unified.ToolChoiceAuto}),
+		agentruntime.WithCachePolicy(unified.CachePolicyOn),
+		agentruntime.WithCacheKey(a.cacheKey()),
 		agentruntime.WithMaxSteps(a.maxSteps),
 		agentruntime.WithToolTimeout(a.toolTimeout),
 		agentruntime.WithProviderIdentity(a.providerIdentity),
@@ -197,6 +199,8 @@ func (a *Agent) conversationOptions(includeSessionID bool) []conversation.Option
 		conversation.WithSystem(BuildSystemPrompt(a.workspace, a.systemOverride)),
 		conversation.WithTools(acoreTool.UnifiedToolsFrom(a.activation.ActiveTools())),
 		conversation.WithToolChoice(unified.ToolChoice{Mode: unified.ToolChoiceAuto}),
+		conversation.WithCachePolicy(unified.CachePolicyOn),
+		conversation.WithCacheKey(a.cacheKey()),
 	}
 	if includeSessionID {
 		opts = append([]conversation.Option{conversation.WithSessionID(conversation.SessionID(a.sessionID))}, opts...)
@@ -205,6 +209,13 @@ func (a *Agent) conversationOptions(includeSessionID bool) []conversation.Option
 		opts = append(opts, conversation.WithReasoning(reasoning))
 	}
 	return opts
+}
+
+func (a *Agent) cacheKey() string {
+	if a.sessionID == "" {
+		return ""
+	}
+	return "miniagent:" + a.sessionID
 }
 
 func (a *Agent) resolveRouteIdentity() {

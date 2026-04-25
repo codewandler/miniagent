@@ -121,6 +121,20 @@ func TestAgent_SessionID(t *testing.T) {
 	assert.Equal(t, "abc123", a.SessionID())
 }
 
+func TestAgent_DefaultRequestUsesCacheKey(t *testing.T) {
+	client := &recordingClient{streams: [][]unified.Event{completedTextStream("response")}}
+	a := New(
+		WithClient(client),
+		WithWorkspace(t.TempDir()),
+		WithInferenceOptions(InferenceOptions{Model: TestServiceID + "/" + TestModelID, MaxTokens: 1000}),
+	)
+
+	require.NoError(t, a.RunTurn(context.Background(), 1, "task"))
+	require.Len(t, client.requests, 1)
+	require.Equal(t, unified.CachePolicyOn, client.requests[0].CachePolicy)
+	require.Equal(t, "miniagent:"+a.SessionID(), client.requests[0].CacheKey)
+}
+
 func TestAgent_PersistsAndResumesSession(t *testing.T) {
 	dir := t.TempDir()
 	firstClient := &recordingClient{streams: [][]unified.Event{completedTextStream("first response")}}
@@ -134,6 +148,7 @@ func TestAgent_PersistsAndResumesSession(t *testing.T) {
 	require.NoError(t, first.RunTurn(context.Background(), 1, "first task"))
 	require.Len(t, firstClient.requests, 1)
 	require.Equal(t, unified.CachePolicyOn, firstClient.requests[0].CachePolicy)
+	require.Equal(t, "miniagent:"+first.SessionID(), firstClient.requests[0].CacheKey)
 	storePath := first.SessionStorePath()
 	require.NotEmpty(t, storePath)
 
@@ -150,6 +165,7 @@ func TestAgent_PersistsAndResumesSession(t *testing.T) {
 	require.NoError(t, second.RunTurn(context.Background(), 1, "second task"))
 	require.Len(t, secondClient.requests, 1)
 	require.Equal(t, unified.CachePolicyOn, secondClient.requests[0].CachePolicy)
+	require.Equal(t, firstClient.requests[0].CacheKey, secondClient.requests[0].CacheKey)
 	require.Len(t, secondClient.requests[0].Messages, 3)
 	requireMessageText(t, secondClient.requests[0].Messages[0], "first task")
 	requireMessageText(t, secondClient.requests[0].Messages[1], "first response")

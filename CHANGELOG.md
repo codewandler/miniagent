@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.3 — 2026-04-25
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.11.5`
+- Updated to `github.com/codewandler/llmadapter v0.48.7`
+- Default model requests now set a stable per-session cache key alongside `cache_policy=on`
+
 ## v0.4.2 — 2026-04-25
 
 ### Changed
