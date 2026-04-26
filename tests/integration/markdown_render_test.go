@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	agent "github.com/codewandler/agentsdk/agent"
 	"github.com/codewandler/llmadapter/unified"
-	"github.com/codewandler/miniagent/agent"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,7 +33,7 @@ func TestMarkdownRendering_StableFenceBlock(t *testing.T) {
 		t.Skip("set MINIAGENT_INTEGRATION=1 to run integration tests")
 	}
 	var buf bytes.Buffer
-	a := agent.New(agent.WithClient(&fakeClient{}), agent.WithWorkspace(t.TempDir()), agent.WithToolTimeout(5*time.Second), agent.WithOutput(&buf))
+	a := agent.Must(agent.WithClient(&fakeClient{}), agent.WithWorkspace(t.TempDir()), agent.WithToolTimeout(5*time.Second), agent.WithOutput(&buf))
 	err := a.RunTurn(context.Background(), 1, "show code")
 	require.NoError(t, err)
 	out := buf.String()

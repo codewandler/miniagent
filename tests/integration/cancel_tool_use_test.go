@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codewandler/miniagent/agent"
+	agent "github.com/codewandler/agentsdk/agent"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,7 +29,7 @@ func TestCancelDuringToolUse_FollowUpTurnSucceeds(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	a := agent.New(
+	a := agent.Must(
 		agent.WithWorkspace(t.TempDir()),
 		agent.WithToolTimeout(10*time.Second),
 		agent.WithMaxSteps(5),

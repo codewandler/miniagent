@@ -1,11 +1,10 @@
 # Benchmark: Source Code Reading
-EXPECTED: 20480
+EXPECTED: 16000
 
-Read the file /repo/agent/tools.go.
+Read the file /repo/.agents/agents/coder.md.
 
-Find the constant named maxOutputBytes. It is defined as an arithmetic
-expression. Evaluate it to a plain integer.
+Find the frontmatter field named max-tokens. It is a plain integer.
 
 Write ONLY that integer (no units, no explanation) to /tmp/bench_result.txt.
 
-Example: if the constant were `16 * 1024`, the answer would be 16384.
+Example: if the field were `max-tokens: 12000`, the answer would be 12000.

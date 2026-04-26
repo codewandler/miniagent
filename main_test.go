@@ -4,33 +4,39 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
+	"github.com/codewandler/agentsdk/agentdir"
+	"github.com/codewandler/agentsdk/app"
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolveSessionPathContinueUsesNewestSession(t *testing.T) {
-	dir := t.TempDir()
-	oldPath := filepath.Join(dir, "20260425T100000Z-old.jsonl")
-	newPath := filepath.Join(dir, "20260425T110000Z-new.jsonl")
-	require.NoError(t, os.WriteFile(oldPath, []byte("{}\n"), 0o600))
-	require.NoError(t, os.WriteFile(newPath, []byte("{}\n"), 0o600))
-	oldTime := time.Date(2026, 4, 25, 10, 0, 0, 0, time.UTC)
-	newTime := time.Date(2026, 4, 25, 11, 0, 0, 0, time.UTC)
-	require.NoError(t, os.Chtimes(oldPath, oldTime, oldTime))
-	require.NoError(t, os.Chtimes(newPath, newTime, newTime))
-
-	path, err := resolveSessionPath(dir, "", true)
+func TestMiniagentResourcesLoadPrimaryAgent(t *testing.T) {
+	resolved, err := agentdir.ResolveFS(miniagentResources, ".agents")
 	require.NoError(t, err)
-	require.Equal(t, newPath, path)
+	name, err := resolved.ResolveDefaultAgent("")
+	require.NoError(t, err)
+	require.Equal(t, "coder", name)
+
+	application, err := app.New(app.WithBundle(resolved.Bundle), app.WithDefaultAgent(name))
+	require.NoError(t, err)
+	spec, ok := application.AgentSpec(name)
+	require.True(t, ok)
+	require.Contains(t, spec.System, "helpful terminal assistant")
 }
 
-func TestResolveSessionPathFindsSessionID(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "20260425T110000Z-abc123.jsonl")
-	require.NoError(t, os.WriteFile(path, []byte("{}\n"), 0o600))
-
-	got, err := resolveSessionPath(dir, "abc123", false)
+func TestMiniagentResourcesDoNotComeFromWorkingDirectory(t *testing.T) {
+	oldWD, err := os.Getwd()
 	require.NoError(t, err)
-	require.Equal(t, path, got)
+	t.Cleanup(func() { require.NoError(t, os.Chdir(oldWD)) })
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".agents", "agents"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".agents", "agents", "wrong.md"), []byte("---\nname: wrong\n---\nwrong"), 0o644))
+	require.NoError(t, os.Chdir(dir))
+
+	resolved, err := agentdir.ResolveFS(miniagentResources, ".agents")
+	require.NoError(t, err)
+	name, err := resolved.ResolveDefaultAgent("")
+	require.NoError(t, err)
+	require.Equal(t, "coder", name)
 }

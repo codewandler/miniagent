@@ -14,15 +14,20 @@ miniagent is now a thin terminal product shell on top of `agentsdk` and
 The current runtime path is:
 
 ```
-CLI/REPL → agent.Agent → agentsdk/runtime.Agent → agentsdk/runner
+CLI/REPL → agentsdk/terminal/cli → agentsdk/app → agentsdk/agent
+        → agentsdk/runtime.Engine → agentsdk/runner
         → llmadapter/unified.Client
         → agentsdk/tools execution
         → agentsdk/conversation session commit
 ```
 
-miniagent owns terminal UX, CLI flags, session path policy, workspace defaults,
-and its system prompt. Generic agent mechanics live in `agentsdk`:
+miniagent owns its product identity and embedded resource bundle. Generic app,
+CLI, REPL, terminal UI, agent, runtime, session, tool, command, and skill
+mechanics live in `agentsdk`:
 
+- app/plugin/agent loading: `agentsdk/app` and `agentsdk/agentdir`
+- CLI and REPL shell: `agentsdk/terminal/cli` and `agentsdk/terminal/repl`
+- terminal rendering: `agentsdk/terminal/ui`
 - model/tool loop: `agentsdk/runtime` and `agentsdk/runner`
 - durable sessions, replay, native continuation: `agentsdk/conversation`
 - tool activation and standard tools: `agentsdk/tools/standard`
@@ -43,28 +48,11 @@ not automatic history mutation.
 
 | File | Role |
 |---|---|
-| `main.go` | CLI entry point, flag definitions, session path resolution |
-| `agent/system.go` | **System prompt** — the highest-leverage file for self-improvement |
-| `agent/agent.go` | Product-level agent wrapper around agentsdk runtime |
-| `agent/options.go` | Agent and inference configuration options |
-| `agent/runtime.go` | llmadapter auto mux setup and agentsdk runtime options |
-| `agent/session.go` | JSONL session creation/resume policy |
-| `agent/provider.go` | resolved route identity wiring for display/defaults |
-| `agent/usage.go` | miniagent-specific usage wrappers over agentsdk/usage |
-| `agent/tools.go` | standard toolset selection |
-| `agent/toolexec.go` | Tool context adapter |
-| `agent/repl.go` | Interactive REPL mode |
-| `agent/display/` | Terminal output formatting package |
-
-### Display package (`agent/display/`)
-
-| File | Role |
-|---|---|
-| `ansi.go` | ANSI escape codes and Truncate helper |
-| `format.go` | Token/cost formatting utilities |
-| `markdown.go` | Glamour-based markdown rendering |
-| `step.go` | StepDisplay state machine for streaming output |
-| `usage.go` | Usage line printing (step, turn, session) |
+| `main.go` | Thin branded CLI entry point around `agentsdk/terminal/cli` |
+| `.agents/agents/coder.md` | Primary miniagent agent definition and system prompt |
+| `.agents/plans/` | Design and migration plans for agentsdk/miniagent architecture work |
+| `benchmarks/` | Self-improvement benchmark tasks |
+| `evolve/` | Self-improvement loop state, reasoning traces, and benchmark harness |
 
 ### Current dependency chain
 
@@ -148,14 +136,14 @@ These rules are enforced by the prompt given to the reasoning agent and must
 be respected by any agent modifying this codebase:
 
 **Allowed:**
-- Edit `agent/system.go` — system prompt body
-- Edit `agent/display/` — output formatting
-- Edit `agent/options.go` — configuration defaults
+- Edit `.agents/agents/coder.md` — system prompt body
+- Edit `.agents/commands/` or `.agents/skills/` if command/skill resources exist
 - Edit `main.go` — CLI flag defaults
 - Add new functions within existing files if they serve the allowed changes
 
 **Not allowed:**
-- Modify `agent/agent.go` or `agent/repl.go` — the core loop is off-limits
+- Reintroduce miniagent-local copies of generic agent, runtime, CLI, REPL, or
+  terminal UI code
 - Add new entries to `go.mod` / `go.sum` — no new external dependencies
 - Modify benchmark files or files under `evolve/`
 - Make more than one logical change per cycle

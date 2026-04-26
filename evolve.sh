@@ -7,7 +7,7 @@
 #   1. SETUP      ensure a stable binary exists (bootstraps from image on first run)
 #   2. BASELINE   benchmark the stable binary → numeric scores
 #   3. REASON     stable agent reads its own source + scores, proposes ONE change
-#   4. IMPLEMENT  stable agent edits agent/*.go / main.go, verifies go build
+#   4. IMPLEMENT  stable agent edits .agents resources / main.go, verifies go build
 #   5. BUILD      compile candidate binary
 #   6. BENCHMARK  run the same suite against the candidate
 #   7. JUDGE      compare scores (pure arithmetic — no LLM bias)
@@ -266,9 +266,8 @@ $(for f in $(find "$BENCHMARKS_DIR" -name "*.md" | sort); do
 ## Steps you MUST complete (do not skip any)
 
 1. Read your source files (use cat — do NOT skip this step):
-     /repo/agent/system.go   ← system prompt  (HIGHEST IMPACT)
-     /repo/agent/tools.go    ← bash tool description + limits
-     /repo/main.go           ← CLI flag defaults
+     /repo/.agents/agents/coder.md   ← agent definition and system prompt (HIGHEST IMPACT)
+     /repo/main.go                   ← branded CLI defaults and embedded resources
 
 2. Identify ONE specific change that would improve the scores above.
    Think about cause and effect:
@@ -277,9 +276,9 @@ $(for f in $(find "$BENCHMARKS_DIR" -name "*.md" | sort); do
    - Low completion → improve error recovery guidance
 
    Highest-impact levers (in order):
-   a) System prompt in agent/system.go  — instructions to the LLM
-   b) Bash tool description in agent/tools.go — how the tool is explained
-   c) Default flag values in main.go    — timeout, max-steps, max-tokens
+   a) System prompt in .agents/agents/coder.md — instructions to the LLM
+   b) Agent resource metadata in .agents/agents/coder.md — model, max-steps, max-tokens
+   c) Branded CLI defaults in main.go — timeout, session path, prompt, max-steps
 
 3. Implement the change by editing the file(s) directly with bash.
 
@@ -287,11 +286,11 @@ $(for f in $(find "$BENCHMARKS_DIR" -name "*.md" | sort); do
      cd /repo && go build ./
    If it fails, FIX the error.
    If you truly cannot fix it, revert with:
-     git -C /repo restore agent/ main.go
+     git -C /repo restore .agents/ main.go
    and write NO_CHANGE as the first line of the reasoning file below.
 
 5. Show the diff:
-     git -C /repo diff agent/ main.go
+     git -C /repo diff .agents/ main.go
 
 6. Write your reasoning to: ${reasoning_file}
    Include what you changed, why, which benchmarks should improve, and the diff.
@@ -321,7 +320,8 @@ Rules:
 - ONE focused change only
 - Code MUST compile after your changes
 - Do NOT add new external dependencies
-- Do NOT modify benchmark files, evolve/ files, or the agent loop in agent/agent.go
+- Do NOT modify benchmark files or files under evolve/
+- Do NOT reintroduce miniagent-local copies of generic agent/runtime/CLI/REPL/UI code
 PROMPT
 )
 
@@ -387,7 +387,7 @@ phase_build_candidate() {
 
   if [[ $exit_code -ne 0 ]]; then
     fail "Candidate build failed — reverting source changes"
-    git -C "$REPO_ROOT" restore agent/ main.go 2>/dev/null || true
+    git -C "$REPO_ROOT" restore .agents/ main.go 2>/dev/null || true
     return 1
   fi
 
@@ -431,7 +431,7 @@ phase_commit_and_promote() {
 
   log "Committing improvements..."
   git -C "$REPO_ROOT" add \
-    agent/ \
+    .agents/ \
     main.go \
     CHANGELOG.md \
     README.md \
@@ -456,7 +456,7 @@ phase_commit_and_promote() {
 phase_revert() {
   log "Reverting source changes..."
   git -C "$REPO_ROOT" restore \
-    agent/ main.go 2>/dev/null || true
+    .agents/ main.go 2>/dev/null || true
   rm -f "$CANDIDATE_BIN"
   warn "Changes reverted — stable binary unchanged"
 }

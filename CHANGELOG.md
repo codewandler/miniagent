@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.0 — 2026-04-26
+
+### Changed
+- Migrated miniagent to the SDK app, agent directory, CLI, REPL, runtime, command, skill, and terminal UI stack
+- Replaced the miniagent-local agent package with embedded `.agents/agents/coder.md` resources
+- Updated to `github.com/codewandler/agentsdk v0.20.1`
+- Updated the self-improvement loop and benchmarks for the new resource-based layout
+
+### Removed
+- Removed miniagent-local copies of generic agent, runtime, session, tool execution, REPL, and display code
+
 ## v0.6.7 — 2026-04-26
 
 ### Added

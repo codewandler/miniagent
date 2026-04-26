@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	agent "github.com/codewandler/agentsdk/agent"
 	"github.com/codewandler/agentsdk/runnertest"
 	"github.com/codewandler/llmadapter/unified"
-	"github.com/codewandler/miniagent/agent"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,7 +24,7 @@ func TestThinkingToolLoopReplaysSignedReasoning(t *testing.T) {
 		runnertest.TextStream("done", "msg_done"),
 	)
 	var out bytes.Buffer
-	a := agent.New(
+	a := agent.Must(
 		agent.WithClient(client),
 		agent.WithWorkspace(t.TempDir()),
 		agent.WithToolTimeout(5*time.Second),
