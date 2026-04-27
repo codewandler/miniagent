@@ -3,8 +3,8 @@ module github.com/codewandler/miniagent
 go 1.26.1
 
 require (
-	github.com/codewandler/agentsdk v0.20.1
-	github.com/codewandler/llmadapter v0.48.22
+	github.com/codewandler/agentsdk v0.22.0
+	github.com/codewandler/llmadapter v1.0.0-rc.8
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -24,6 +24,7 @@ require (
 	github.com/codewandler/modeldb v0.13.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dlclark/regexp2 v1.12.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect

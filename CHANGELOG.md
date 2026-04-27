@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.7.1 — 2026-04-27
+
+### Changed
+- Updated to `github.com/codewandler/agentsdk v0.22.0`
+- Updated to `github.com/codewandler/llmadapter v1.0.0-rc.8`
+- Updated resource-loading tests for the current agentsdk app API
+
 ## v0.7.0 — 2026-04-26
 
 ### Changed

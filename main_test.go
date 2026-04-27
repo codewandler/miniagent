@@ -17,7 +17,7 @@ func TestMiniagentResourcesLoadPrimaryAgent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "coder", name)
 
-	application, err := app.New(app.WithBundle(resolved.Bundle), app.WithDefaultAgent(name))
+	application, err := app.New(app.WithResourceBundle(resolved.Bundle), app.WithDefaultAgent(name))
 	require.NoError(t, err)
 	spec, ok := application.AgentSpec(name)
 	require.True(t, ok)
